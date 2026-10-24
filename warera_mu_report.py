@@ -294,6 +294,12 @@ def main():
     }
     template = (Path(__file__).parent / "mu_report_template.html").read_text(encoding="utf-8")
     html = template.replace("/*__DATA__*/null", json.dumps(data, ensure_ascii=False).replace("</", "<\\/"))
+    # Standalone page skeleton (standards mode, base reset) for hosting outside claude.ai.
+    html = ('<!doctype html><html lang="fr"><head><meta charset="utf-8">'
+            '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">'
+            '<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}'
+            'body{margin:0;font:14px/1.4 system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>'
+            '</head><body>' + html + '</body></html>')
     Path(args.out).write_text(html, encoding="utf-8")
     Path(args.out).with_suffix(".json").write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
     print(f"Report written to {args.out} ({len(battle_rows)} battles, {len(members)} members)")
