@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+mu_report.html
+mu_report.json
+damage_tracker_errors.log

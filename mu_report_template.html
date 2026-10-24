@@ -1,0 +1,541 @@
+<title>Bataillon Baguette QG</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@500;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a command board. Header strip, readiness tiles, member roster table, then a battle log with expandable player breakdowns. */
+:root {
+  --bg: #f3f4f1;
+  --surface: #ffffff;
+  --ink: #1d2430;
+  --muted: #5f6772;
+  --line: #d9dcd6;
+  --accent: #2f5d8a;
+  --brass: #a8761c;
+  --bar: #2f5d8a;
+  --bar-soft: #dbe5ef;
+  --good: #2e7d4f;
+  --warn: #b5651d;
+  --bad: #b03a3a;
+  --chip: #eceee9;
+  --display: "Saira Condensed", "Arial Narrow", sans-serif;
+  --body: "IBM Plex Sans", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12161d; --surface: #1a2029; --ink: #e6e9ee; --muted: #9aa3ae; --line: #2c3440;
+    --accent: #7fb0e0; --brass: #d9a54a; --bar: #6fa2d4; --bar-soft: #263345; --good: #5cbf85;
+    --warn: #e09a55; --bad: #e06a6a; --chip: #232b36; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12161d; --surface: #1a2029; --ink: #e6e9ee; --muted: #9aa3ae; --line: #2c3440;
+  --accent: #7fb0e0; --brass: #d9a54a; --bar: #6fa2d4; --bar-soft: #263345; --good: #5cbf85;
+  --warn: #e09a55; --bad: #e06a6a; --chip: #232b36; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.45; }
+.wrap { max-width: 1180px; margin: 0 auto; padding-block: 28px 64px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; flex-direction: column; gap: 32px; }
+h1, h2 { font-family: var(--display); font-weight: 700; letter-spacing: .01em; text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(2rem, 5vw, 3rem); line-height: 1; text-transform: uppercase; }
+h2 { font-size: 1.6rem; text-transform: uppercase; }
+.eyebrow { font-family: var(--mono); font-size: .75rem; letter-spacing: .12em; text-transform: uppercase; color: var(--brass); }
+.muted { color: var(--muted); }
+.num { font-variant-numeric: tabular-nums; font-family: var(--mono); }
+header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 16px;
+  border-bottom: 3px solid var(--ink); padding-bottom: 16px; }
+header .meta { display: flex; flex-direction: column; gap: 4px; text-align: right; font-size: .85rem; }
+section { display: flex; flex-direction: column; gap: 14px; }
+.sec-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 8px; }
+.tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.tile { background: var(--surface); border: 1px solid var(--line); padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.tile .label { font-size: .78rem; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.tile .value { font-family: var(--display); font-size: 2.1rem; font-weight: 700; line-height: 1.05; font-variant-numeric: tabular-nums; }
+.tile .sub { font-size: .8rem; color: var(--muted); }
+.controls { display: flex; flex-wrap: wrap; gap: 10px 22px; align-items: center; background: var(--surface); border: 1px solid var(--line); padding: 12px 16px; font-size: .88rem; }
+.controls label { display: flex; align-items: center; gap: 8px; }
+.controls select, .controls input[type=range] { font: inherit; accent-color: var(--accent); }
+.bonus-num { display: inline-flex; align-items: center; gap: 4px; font-family: var(--mono); }
+.controls input[type=number] { width: 5.5em; font: inherit; padding: 3px 6px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); border-radius: 3px; text-align: right; }
+.controls select { padding: 3px 6px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); border-radius: 3px; }
+.table-box { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); }
+table { border-collapse: collapse; width: 100%; font-size: .88rem; }
+th, td { padding: 8px 10px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line); }
+th:first-child, td:first-child { text-align: left; }
+thead th { font-weight: 600; font-size: .74rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted);
+  cursor: pointer; user-select: none; position: sticky; top: 0; background: var(--surface); }
+thead th:hover { color: var(--ink); }
+thead th[aria-sort] { color: var(--accent); }
+tbody tr:hover { background: var(--chip); }
+td.name { font-weight: 600; }
+td .cell-bar { display: inline-block; height: 6px; background: var(--bar); vertical-align: middle; margin-left: 6px; border-radius: 1px; }
+.pill { display: inline-block; font-size: .7rem; font-family: var(--mono); padding: 1px 6px; border-radius: 2px; letter-spacing: .04em; text-transform: uppercase; margin-left: 6px; vertical-align: 1px; }
+.pill.live { background: var(--bad); color: var(--surface); }
+.pill.ended { background: var(--chip); color: var(--muted); }
+.pill.buff { background: var(--good); color: var(--surface); }
+.pill.debuff { background: var(--warn); color: var(--surface); }
+.pill.idle { background: var(--chip); color: var(--muted); }
+.battles { display: flex; flex-direction: column; gap: 8px; }
+details.battle { background: var(--surface); border: 1px solid var(--line); }
+details.battle[open] { border-color: var(--accent); }
+details.battle summary { list-style: none; cursor: pointer; padding: 12px 16px; display: grid;
+  grid-template-columns: minmax(0, 2.2fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.4fr); gap: 12px; align-items: center; }
+details.battle summary::-webkit-details-marker { display: none; }
+details.battle summary:focus-visible, thead th:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.b-title { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.b-title strong { font-family: var(--display); font-size: 1.2rem; letter-spacing: .01em; }
+.b-title span { font-size: .82rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
+.b-stat { display: flex; flex-direction: column; font-size: .78rem; color: var(--muted); min-width: 0; }
+.b-stat b { font-family: var(--mono); font-size: 1rem; color: var(--ink); font-weight: 500; }
+.share { height: 8px; background: var(--bar-soft); position: relative; border-radius: 1px; overflow: hidden; }
+.share i { position: absolute; inset: 0 auto 0 0; background: var(--brass); }
+.b-body { padding: 4px 16px 16px; display: flex; flex-direction: column; gap: 6px; }
+.p-row { display: grid; grid-template-columns: minmax(90px, 160px) minmax(0, 1fr) 110px 60px; gap: 10px; align-items: center; font-size: .86rem; }
+.p-row .track { height: 14px; background: var(--bar-soft); border-radius: 1px; overflow: hidden; }
+.p-row .track i { display: block; height: 100%; background: var(--bar); }
+.p-row .r { text-align: right; }
+.tabbed { gap: 0; }
+.tabs { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 3px solid var(--ink); }
+.tabs button { font-family: var(--display); font-weight: 700; font-size: 1.35rem; text-transform: uppercase; letter-spacing: .01em;
+  background: transparent; color: var(--muted); border: 0; padding: 6px 14px 4px; cursor: pointer; border-radius: 3px 3px 0 0; }
+.tabs button:hover { color: var(--ink); }
+.tabs button[aria-selected="true"] { background: var(--ink); color: var(--bg); }
+.tabs button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tabpanel { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
+table.heat th, table.heat td { padding: 0; text-align: center; font-size: .72rem; min-width: 30px; height: 30px; border-bottom: 1px solid var(--surface); border-right: 1px solid var(--surface); }
+table.heat th:first-child, table.heat td:first-child { text-align: left; padding: 0 10px; min-width: 120px; position: sticky; left: 0; background: var(--surface); z-index: 1; }
+table.heat thead th { cursor: default; font-family: var(--mono); font-size: .7rem; letter-spacing: 0; }
+table.heat td.h { font-family: var(--mono); color: var(--ink); }
+table.heat td.h.hot { color: var(--surface); }
+table.heat td.na { background: repeating-linear-gradient(45deg, var(--chip), var(--chip) 4px, var(--surface) 4px, var(--surface) 8px); }
+table.heat td.tot { padding: 0 10px; text-align: right; font-family: var(--mono); min-width: 70px; }
+table.heat tr.mu td { font-weight: 600; border-bottom: 3px solid var(--surface); }
+table.heat tbody tr:hover { background: transparent; }
+.legend { display: inline-flex; align-items: center; gap: 6px; font-size: .8rem; color: var(--muted); }
+.legend .lg { display: inline-block; width: 90px; height: 10px; background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 8%, var(--surface)), var(--accent)); }
+.empty { padding: 18px 16px; color: var(--muted); }
+tfoot td { font-weight: 600; border-top: 2px solid var(--ink); border-bottom: 0; }
+.note { font-size: .82rem; color: var(--muted); max-width: 78ch; }
+.note code { font-family: var(--mono); font-size: .78rem; background: var(--chip); padding: 0 4px; }
+@media (max-width: 760px) {
+  .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  details.battle summary { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .b-title { grid-column: 1 / -1; }
+  header .meta { text-align: left; }
+  .p-row { grid-template-columns: minmax(70px, 110px) minmax(0, 1fr) 90px; }
+  .p-row .pct { display: none; }
+}
+@media (prefers-reduced-motion: no-preference) { .track i, .share i { transition: width .3s ease; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <div class="eyebrow" id="mu-country">Unité militaire</div>
+      <h1 id="mu-name">Unité</h1>
+    </div>
+    <div class="meta">
+      <span id="mu-rank" class="num"></span>
+      <span id="gen" class="muted"></span>
+    </div>
+  </header>
+
+  <section aria-labelledby="pot-h">
+    <div class="sec-head"><h2 id="pot-h">Puissance de frappe</h2><span class="muted" id="pot-sub"></span></div>
+    <div class="tiles" id="tiles"></div>
+    <div class="controls">
+      <label for="food">Nourriture
+        <select id="food"></select>
+      </label>
+      <label for="bonus">Bonus de bataille <input type="range" id="bonus" min="0" max="200" step="1" value="0"> <span class="bonus-num">+<input type="number" id="bonus-n" min="0" max="1000" step="0.1" value="0" inputmode="decimal" aria-label="Bonus de bataille en pourcentage"> %</span></label>
+      <label for="nobuff"><input type="checkbox" id="nobuff"> Ignorer buffs/débuffs temporaires</label>
+      <label for="armor"><input type="checkbox" id="armor" checked> Armure/esquive réduisent le coût en santé</label>
+    </div>
+    <div class="table-box">
+      <table id="members">
+        <thead><tr>
+          <th data-k="name" tabindex="0">Joueur</th>
+          <th data-k="level" tabindex="0">Niv.</th>
+          <th data-k="atk" tabindex="0">Attaque</th>
+          <th data-k="prec" tabindex="0">Précision</th>
+          <th data-k="cc" tabindex="0">Crit %</th>
+          <th data-k="cd" tabindex="0">Dégâts crit</th>
+          <th data-k="perHit" tabindex="0">Par coup</th>
+          <th data-k="hitsNow" tabindex="0">Coups dispo</th>
+          <th data-k="dmgNow" tabindex="0">Dégâts dispo</th>
+          <th data-k="hitsDay" tabindex="0">Coups / jour</th>
+          <th data-k="dmgDay" tabindex="0">Dégâts / jour</th>
+          <th data-k="period" tabindex="0">Infligés (période)</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="note">
+      Estimation par coup : <code>attaque × (précision + (1 − précision) × 0,5) × (1 + crit % × dégâts crit %)</code>, calibrée sur des coups réels
+      (un coup raté fait environ la moitié, un critique multiplie par 1 + dégâts critiques). Un coup coûte 10 santé ; l'armure et l'esquive réduisent ce coût.
+      « Dispo » = santé actuelle + faim actuelle convertie en nourriture. « Par jour » = régénération de santé et de faim sur 24 h.
+      Les bonus de bataille (ordres de pays et de MU, alliance, patriotisme) se règlent avec le curseur.
+    </p>
+  </section>
+
+  <section class="tabbed">
+    <div class="tabs" role="tablist" aria-label="Analyse par joueur">
+      <button type="button" role="tab" id="tab-sum" aria-controls="panel-sum" aria-selected="true">Bilan par joueur</button>
+      <button type="button" role="tab" id="tab-act" aria-controls="panel-act" aria-selected="false" tabindex="-1">Heures de frappe</button>
+    </div>
+
+    <div class="tabpanel" id="panel-sum" role="tabpanel" aria-labelledby="tab-sum">
+      <div class="sec-head"><span class="muted" id="sum-sub"></span></div>
+      <div class="table-box">
+        <table id="totals">
+          <thead><tr>
+            <th data-k="name" tabindex="0">Joueur</th>
+            <th data-k="battles" tabindex="0">Batailles</th>
+            <th data-k="damage" tabindex="0">Dégâts</th>
+            <th data-k="share" tabindex="0">Part MU</th>
+            <th data-k="best" tabindex="0">Meilleure bataille</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="tabpanel" id="panel-act" role="tabpanel" aria-labelledby="tab-act" hidden>
+      <div class="sec-head"><span class="muted" id="act-sub"></span></div>
+      <div class="controls">
+        <label for="act-scale">Échelle des couleurs
+          <select id="act-scale">
+            <option value="row">Par joueur (son propre rythme)</option>
+            <option value="all">Commune (comparer les joueurs)</option>
+          </select>
+        </label>
+        <span class="legend" aria-hidden="true">peu <i class="lg"></i> beaucoup</span>
+      </div>
+      <div class="table-box" id="act-box">
+        <table id="activity" class="heat">
+          <thead></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="note">Dégâts moyens infligés par jour à chaque heure (heure locale du PC qui fait les relevés), mesurés en relevant le compteur de dégâts de chaque joueur toutes les 15 minutes. Les heures hachurées n'ont pas encore été mesurées (PC éteint ou collecte trop récente). Cela inclut tous les dégâts du joueur, pas seulement ceux des batailles de la MU.</p>
+    </div>
+  </section>
+
+  <section aria-labelledby="bat-h">
+    <div class="sec-head"><h2 id="bat-h">Batailles</h2><span class="muted" id="bat-sub"></span></div>
+    <div class="battles" id="battles"></div>
+  </section>
+</div>
+
+<script>
+const DATA = /*__DATA__*/null;
+const FOOD_LABELS = { bread: "Pain", steak: "Steak", cookedFish: "Poisson cuit" };
+const fmt = n => n == null || isNaN(n) ? "–" : Math.round(n).toLocaleString("fr-FR");
+const short = n => {
+  if (n == null || isNaN(n)) return "–";
+  const a = Math.abs(n);
+  if (a >= 1e9) return (n / 1e9).toLocaleString("fr-FR", { maximumFractionDigits: 2 }) + " Md";
+  if (a >= 1e6) return (n / 1e6).toLocaleString("fr-FR", { maximumFractionDigits: 2 }) + " M";
+  if (a >= 1e4) return (n / 1e3).toLocaleString("fr-FR", { maximumFractionDigits: 1 }) + " k";
+  return fmt(n);
+};
+const pct = (n, d = 0) => (n * 100).toLocaleString("fr-FR", { minimumFractionDigits: d, maximumFractionDigits: d }) + " %";
+const el = (tag, attrs = {}, ...kids) => {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") e.className = v; else if (k === "text") e.textContent = v; else e.setAttribute(k, v);
+  }
+  for (const k of kids) if (k != null) e.append(k);
+  return e;
+};
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch {} }
+};
+
+const ui = {
+  food: document.getElementById("food"),
+  bonus: document.getElementById("bonus"),
+  bonusN: document.getElementById("bonus-n"),
+  nobuff: document.getElementById("nobuff"),
+  armor: document.getElementById("armor"),
+};
+let BONUS = 0;
+const sortState = { members: { k: "dmgDay", dir: -1 }, totals: { k: "damage", dir: -1 } };
+
+const sv = s => (s && (s.totalAfterSoftCap ?? s.total ?? s.value)) || 0;
+const names = Object.fromEntries(DATA.members.map(m => [m.id, m.name]));
+
+function periodDamage() {
+  const out = {};
+  for (const b of DATA.battles) for (const side of Object.values(b.sides)) for (const p of side.players) {
+    const o = out[p.id] ||= { damage: 0, battles: 0, best: null };
+    o.damage += p.damage; o.battles += 1;
+    if (!o.best || p.damage > o.best.damage) o.best = { damage: p.damage, region: b.region };
+  }
+  return out;
+}
+const PERIOD = periodDamage();
+
+function compute(m) {
+  const s = m.skills;
+  let atk = sv(s.attack);
+  const a = s.attack || {};
+  if (ui.nobuff.checked) {
+    if (a.buffsPercent) atk /= 1 + a.buffsPercent / 100;
+    if (a.debuffsPercent) atk /= Math.max(0.01, 1 - a.debuffsPercent / 100);
+  }
+  const prec = Math.min(1, sv(s.precision) / 100);
+  const cc = Math.min(1, sv(s.criticalChance) / 100);
+  const cd = sv(s.criticalDamages) / 100;
+  const bonus = 1 + BONUS / 100;
+  const perHit = atk * (prec + (1 - prec) * 0.5) * (1 + cc * cd) * bonus;
+
+  const maxHp = sv(s.health) || 100;
+  const foodHp = maxHp * (DATA.foods[ui.food.value] || 0) / 100;
+  let cost = DATA.healthCost || 10;
+  if (ui.armor.checked) cost *= (1 - Math.min(0.9, sv(s.armor) / 100)) * (1 - Math.min(0.9, sv(s.dodge) / 100));
+  const hpNow = (s.health?.currentBarValue ?? maxHp) + Math.floor(s.hunger?.currentBarValue ?? 0) * foodHp;
+  const hpDay = 24 * (s.health?.hourlyBarRegen ?? 0) + 24 * (s.hunger?.hourlyBarRegen ?? 0) * foodHp;
+  const hitsNow = Math.floor(hpNow / cost);
+  const hitsDay = Math.floor(hpDay / cost);
+  const per = PERIOD[m.id];
+  return {
+    m, name: m.name, level: m.level ?? 0, atk, prec, cc, cd, perHit,
+    hitsNow, dmgNow: hitsNow * perHit, hitsDay, dmgDay: hitsDay * perHit,
+    period: per ? per.damage : 0,
+  };
+}
+
+function sortRows(rows, st) {
+  return rows.sort((x, y) => {
+    const a = x[st.k], b = y[st.k];
+    return (typeof a === "string" ? a.localeCompare(b, "fr") : a - b) * st.dir;
+  });
+}
+
+function setSortHeaders(table, st) {
+  table.querySelectorAll("thead th").forEach(th => {
+    if (th.dataset.k === st.k) th.setAttribute("aria-sort", st.dir < 0 ? "descending" : "ascending");
+    else th.removeAttribute("aria-sort");
+  });
+}
+
+function renderMembers() {
+  const rows = sortRows(DATA.members.map(compute), sortState.members);
+  const sum = k => rows.reduce((t, r) => t + r[k], 0);
+  const tiles = document.getElementById("tiles");
+  const totalPeriod = DATA.battles.reduce((t, b) => t + Object.values(b.sides).reduce((u, s) => u + s.muDamage, 0), 0);
+  const active = DATA.members.filter(m => m.isActive).length;
+  tiles.replaceChildren(
+    tile("Par coup, toute la MU", short(sum("perHit")), `moyenne ${short(sum("perHit") / rows.length)} par joueur`),
+    tile("Disponible maintenant", short(sum("dmgNow")), `${fmt(sum("hitsNow"))} coups avec la santé et la faim actuelles`),
+    tile("Potentiel par jour", short(sum("dmgDay")), `${fmt(sum("hitsDay"))} coups grâce à la régénération`),
+    tile(`Infligés en ${fmtDays(DATA.days)}`, short(totalPeriod), `${DATA.battles.length} batailles · ${active}/${DATA.members.length} joueurs actifs`),
+  );
+  const maxDay = Math.max(...rows.map(r => r.dmgDay), 1);
+  const tbody = document.querySelector("#members tbody");
+  tbody.replaceChildren(...rows.map(r => {
+    const nameCell = el("td", { class: "name" }, r.name);
+    const b = r.m.buffs || {};
+    const now = Date.now();
+    if (b.buffCodes?.length && new Date(b.buffEndAt) > now) nameCell.append(el("span", { class: "pill buff", title: "Buff actif jusqu'à " + new Date(b.buffEndAt).toLocaleTimeString("fr-FR"), text: "buff" }));
+    if (b.debuffCodes?.length && new Date(b.debuffEndAt) > now) nameCell.append(el("span", { class: "pill debuff", title: "Débuff actif jusqu'à " + new Date(b.debuffEndAt).toLocaleTimeString("fr-FR"), text: "débuff" }));
+    if (!r.m.isActive) nameCell.append(el("span", { class: "pill idle", title: "Dernière connexion : " + (r.m.lastSeen ? new Date(r.m.lastSeen).toLocaleDateString("fr-FR") : "?"), text: "inactif" }));
+    const dayCell = el("td", { class: "num" }, short(r.dmgDay), el("span", { class: "cell-bar", style: `width:${Math.round(40 * r.dmgDay / maxDay)}px` }));
+    return el("tr", {},
+      nameCell,
+      el("td", { class: "num", text: r.level }),
+      el("td", { class: "num", text: fmt(r.atk) }),
+      el("td", { class: "num", text: pct(r.prec) }),
+      el("td", { class: "num", text: pct(r.cc) }),
+      el("td", { class: "num", text: "+" + pct(r.cd) }),
+      el("td", { class: "num", text: fmt(r.perHit) }),
+      el("td", { class: "num", text: fmt(r.hitsNow) }),
+      el("td", { class: "num", text: short(r.dmgNow) }),
+      el("td", { class: "num", text: fmt(r.hitsDay) }),
+      dayCell,
+      el("td", { class: "num", text: r.period ? short(r.period) : "–" }),
+    );
+  }));
+  setSortHeaders(document.getElementById("members"), sortState.members);
+  document.getElementById("pot-sub").textContent = "Estimations à partir de l'équipement actuel de chaque joueur";
+}
+
+function tile(label, value, sub) {
+  return el("div", { class: "tile" }, el("span", { class: "label", text: label }), el("span", { class: "value", text: value }), el("span", { class: "sub", text: sub }));
+}
+const fmtDays = d => d === 1 ? "24 h" : `${d} jours`;
+
+function renderTotals() {
+  const muTotal = Object.values(PERIOD).reduce((t, p) => t + p.damage, 0) || 1;
+  const rows = DATA.members.map(m => {
+    const p = PERIOD[m.id] || { damage: 0, battles: 0, best: null };
+    return { name: m.name, battles: p.battles, damage: p.damage, share: p.damage / muTotal, best: p.best ? p.best.damage : 0, bestRegion: p.best?.region };
+  });
+  sortRows(rows, sortState.totals);
+  const max = Math.max(...rows.map(r => r.damage), 1);
+  document.querySelector("#totals tbody").replaceChildren(...rows.map(r => el("tr", {},
+    el("td", { class: "name", text: r.name }),
+    el("td", { class: "num", text: r.battles || "–" }),
+    el("td", { class: "num" }, r.damage ? short(r.damage) : "–", el("span", { class: "cell-bar", style: `width:${Math.round(60 * r.damage / max)}px` })),
+    el("td", { class: "num", text: r.damage ? pct(r.share, 1) : "–" }),
+    el("td", { class: "num", text: r.best ? `${short(r.best)} · ${r.bestRegion}` : "–" }),
+  )));
+  setSortHeaders(document.getElementById("totals"), sortState.totals);
+  const silent = rows.filter(r => !r.damage).length;
+  document.getElementById("sum-sub").textContent = `${fmtDays(DATA.days)} · ${silent} joueur${silent > 1 ? "s" : ""} sans dégâts sur la période`;
+}
+
+function renderActivity() {
+  const A = DATA.activity;
+  const table = document.getElementById("activity");
+  const sub = document.getElementById("act-sub");
+  const startTxt = A ? new Date(A.start).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" }) : "";
+  if (!A || A.snapshots < 2 || !A.coverage.some(c => c > 0)) {
+    sub.textContent = A ? `Collecte démarrée le ${startTxt}` : "";
+    document.getElementById("act-box").replaceChildren(el("div", { class: "empty", text: "La collecte vient de démarrer : il faut quelques heures de relevés pour voir les premiers créneaux, et quelques jours pour une carte fiable." }));
+    return;
+  }
+  const hours = [...Array(24).keys()];
+  const measured = A.coverage.map(m => m / 60);
+  const avg = arr => arr.map((v, h) => measured[h] > 0.05 ? v / measured[h] : null);
+  const rows = DATA.members.map(m => ({ name: m.name, vals: avg(A.users[m.id] || Array(24).fill(0)) }))
+    .map(r => ({ ...r, total: r.vals.reduce((t, v) => t + (v || 0), 0) }))
+    .sort((x, y) => y.total - x.total);
+  const muVals = hours.map(h => measured[h] > 0.05 ? rows.reduce((t, r) => t + (r.vals[h] || 0), 0) : null);
+  const scale = document.getElementById("act-scale").value;
+  const globalMax = Math.max(...rows.flatMap(r => r.vals.map(v => v || 0)), 1);
+  const cell = (v, max) => {
+    if (v == null) return el("td", { class: "na", title: "non mesuré" });
+    const f = max > 0 ? v / max : 0;
+    const td = el("td", { class: "h" + (f > 0.55 ? " hot" : ""), title: `${fmt(v)} dégâts en moyenne` });
+    td.style.background = f > 0 ? `color-mix(in srgb, var(--accent) ${Math.round(8 + 92 * f)}%, var(--surface))` : "var(--surface)";
+    if (f >= 0.5) td.textContent = short(v).replace(" Md", "Md").replace(" k", "k").replace(" M", "M");
+    return td;
+  };
+  table.querySelector("thead").replaceChildren(el("tr", {}, el("th", { text: "Joueur" }), ...hours.map(h => el("th", { text: h + "h" })), el("th", { text: "/ jour" })));
+  const muMax = Math.max(...muVals.map(v => v || 0), 1);
+  const muTotal = muVals.reduce((a, b) => a + (b || 0), 0);
+  const muRow = el("tr", { class: "mu" }, el("td", { text: "Total MU" }), ...hours.map(h => cell(muVals[h], muMax)), el("td", { class: "tot", text: short(muTotal) }));
+  table.querySelector("tbody").replaceChildren(muRow, ...rows.map(r => {
+    const max = scale === "row" ? Math.max(...r.vals.map(v => v || 0)) : globalMax;
+    return el("tr", {}, el("td", { class: "name", text: r.name }), ...hours.map(h => cell(r.vals[h], max)), el("td", { class: "tot", text: r.total ? short(r.total) : "–" }));
+  }));
+  const days = (new Date(A.end) - new Date(A.start)) / 864e5;
+  const covered = measured.filter(m => m > 0.05).length;
+  sub.textContent = `${A.snapshots} relevés depuis le ${startTxt} · ${days.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} jour(s) · ${covered}/24 heures mesurées`;
+}
+
+function initTabs() {
+  const tabs = [...document.querySelectorAll('.tabs [role="tab"]')];
+  const select = (tab, focus) => {
+    tabs.forEach(t => {
+      const on = t === tab;
+      t.setAttribute("aria-selected", String(on));
+      t.tabIndex = on ? 0 : -1;
+      document.getElementById(t.getAttribute("aria-controls")).hidden = !on;
+    });
+    if (focus) tab.focus();
+    store.set("tab", tab.id);
+  };
+  tabs.forEach((t, i) => {
+    t.addEventListener("click", () => select(t));
+    t.addEventListener("keydown", e => {
+      if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+        e.preventDefault();
+        select(tabs[(i + (e.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length], true);
+      }
+    });
+  });
+  const saved = tabs.find(t => t.id === store.get("tab"));
+  if (saved) select(saved);
+}
+
+const SIDE_LABEL = { attacker: "attaque", defender: "défense" };
+function renderBattles() {
+  const box = document.getElementById("battles");
+  const live = DATA.battles.filter(b => b.isActive).length;
+  document.getElementById("bat-sub").textContent = `${live} en cours · ${DATA.battles.length - live} terminées · cliquer pour le détail par joueur`;
+  if (!DATA.battles.length) { box.replaceChildren(el("p", { class: "muted", text: "Aucune bataille de la MU sur la période." })); return; }
+  box.replaceChildren(...DATA.battles.map(b => {
+    const sides = Object.entries(b.sides);
+    const muDmg = sides.reduce((t, [, s]) => t + s.muDamage, 0);
+    const sideDmg = sides.reduce((t, [, s]) => t + s.sideDamage, 0) || 1;
+    const main = sides.slice().sort((x, y) => y[1].muDamage - x[1].muDamage)[0][1];
+    const when = b.isActive ? new Date(b.createdAt) : new Date(b.endedAt || b.createdAt);
+    const sideNames = sides.map(([k]) => SIDE_LABEL[k]).join(" + ");
+    const title = el("div", { class: "b-title" },
+      el("strong", {}, b.region, el("span", { class: "pill " + (b.isActive ? "live" : "ended"), text: b.isActive ? "en cours" : "terminée" })),
+      el("span", { text: `${b.attacker.name || "?"} → ${b.defender.name || "?"} · rounds ${b.score[0]}–${b.score[1]} · côté ${sideNames} · ${b.isActive ? "ouverte" : "finie"} le ${when.toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}` }));
+    const share = muDmg / sideDmg;
+    const summary = el("summary", {},
+      title,
+      el("div", { class: "b-stat" }, "Dégâts MU", el("b", { text: short(muDmg) })),
+      el("div", { class: "b-stat" }, "Rang MU", el("b", { text: `${main.muRank} / ${main.muCount}` })),
+      el("div", { class: "b-stat" }, `Part du camp · ${pct(share, 1)}`, el("div", { class: "share" }, el("i", { style: `width:${Math.min(100, share * 100 * 4)}%` }))),
+    );
+    const players = sides.flatMap(([side, s]) => s.players.map(p => ({ ...p, side })));
+    players.sort((x, y) => y.damage - x.damage);
+    const max = players[0]?.damage || 1;
+    const body = el("div", { class: "b-body" }, ...players.map(p => el("div", { class: "p-row" },
+      el("span", { text: (names[p.id] || "?") + (sides.length > 1 ? ` (${SIDE_LABEL[p.side]})` : "") }),
+      el("span", { class: "track" }, el("i", { style: `width:${(100 * p.damage / max).toFixed(1)}%` })),
+      el("span", { class: "num r", text: fmt(p.damage) }),
+      el("span", { class: "num r muted pct", text: pct(p.damage / (muDmg || 1)) }),
+    )));
+    return el("details", { class: "battle" }, summary, body);
+  }));
+}
+
+function bindSort(id, key, render) {
+  document.querySelectorAll(`#${id} thead th`).forEach(th => {
+    const go = () => {
+      const st = sortState[key];
+      st.dir = st.k === th.dataset.k ? -st.dir : (th.dataset.k === "name" ? 1 : -1);
+      st.k = th.dataset.k;
+      render();
+    };
+    th.addEventListener("click", go);
+    th.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } });
+  });
+}
+
+function init() {
+  const mu = DATA.mu;
+  document.getElementById("mu-name").textContent = mu.name;
+  document.getElementById("mu-country").textContent = `Unité militaire · ${mu.country?.name || ""} · niveau ${mu.level ?? "?"}`;
+  const w = mu.rankings?.muWeeklyDamages;
+  document.getElementById("mu-rank").textContent = w ? `Dégâts de la semaine : ${short(w.value)} · rang ${w.rank} (${w.tier})` : "";
+  document.getElementById("gen").textContent = "Données du " + new Date(DATA.generatedAt).toLocaleString("fr-FR", { dateStyle: "long", timeStyle: "short" });
+
+  for (const [k, v] of Object.entries(DATA.foods)) ui.food.append(el("option", { value: k, text: `${FOOD_LABELS[k] || k} (+${v} % santé)` }));
+  ui.food.value = store.get("food") || (DATA.foods.steak ? "steak" : Object.keys(DATA.foods)[0]);
+  BONUS = Math.max(0, Number(store.get("bonus")) || 0);
+  ui.bonus.value = Math.min(BONUS, Number(ui.bonus.max));
+  ui.bonusN.value = BONUS;
+  const rerender = () => {
+    store.set("food", ui.food.value); store.set("bonus", String(BONUS));
+    renderMembers();
+  };
+  ui.bonus.addEventListener("input", () => { BONUS = Number(ui.bonus.value); ui.bonusN.value = BONUS; rerender(); });
+  ui.bonusN.addEventListener("input", () => {
+    const v = parseFloat(String(ui.bonusN.value).replace(",", "."));
+    if (!isFinite(v) || v < 0) return;
+    BONUS = v; ui.bonus.value = Math.min(v, Number(ui.bonus.max)); rerender();
+  });
+  ui.bonusN.addEventListener("change", () => { ui.bonusN.value = BONUS; });
+  [ui.food, ui.nobuff, ui.armor].forEach(c => c.addEventListener("input", rerender));
+  bindSort("members", "members", renderMembers);
+  bindSort("totals", "totals", renderTotals);
+  const actScale = document.getElementById("act-scale");
+  actScale.value = store.get("actScale") || "row";
+  actScale.addEventListener("input", () => { store.set("actScale", actScale.value); renderActivity(); });
+  initTabs();
+  renderMembers(); renderTotals(); renderActivity(); renderBattles();
+}
+init();
+</script>
