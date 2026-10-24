@@ -2,8 +2,8 @@ name: Daily report
 
 on:
   schedule:
-    # 17:00 UTC = 18:00 in Paris in winter (19:00 in summer)
-    - cron: "0 17 * * *"
+    # 17:37 UTC = 18:37 in Paris in winter (19:37 in summer); off the busy top of the hour
+    - cron: "37 17 * * *"
   workflow_dispatch:
 
 permissions:

@@ -2,7 +2,8 @@ name: Damage snapshot
 
 on:
   schedule:
-    - cron: "*/15 * * * *"
+    # Off the busy :00/:15/:30/:45 minutes
+    - cron: "7,22,37,52 * * * *"
   workflow_dispatch:
 
 permissions:
