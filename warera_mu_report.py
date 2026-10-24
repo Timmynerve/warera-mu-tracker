@@ -12,6 +12,12 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+try:
+    from zoneinfo import ZoneInfo
+    REPORT_TZ = ZoneInfo("Europe/Paris")
+except Exception:  # tzdata missing (common on Windows): fall back to the machine's local time
+    REPORT_TZ = None
+
 API = "https://api2.warera.io/trpc/"
 HEADERS = {"User-Agent": "curl/8.0"}
 
@@ -201,7 +207,7 @@ def build_activity(log_path, member_ids):
         # Split the interval at local hour boundaries.
         pieces, cur = [], t0
         while cur < t1:
-            local = cur.astimezone()
+            local = cur.astimezone(REPORT_TZ)
             next_hour = (local.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)).astimezone(timezone.utc)
             nxt = min(t1, next_hour)
             pieces.append((local.hour, (nxt - cur).total_seconds() / 60))
