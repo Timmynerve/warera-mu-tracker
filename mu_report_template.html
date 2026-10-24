@@ -46,7 +46,7 @@ h2 { font-size: 1.6rem; text-transform: uppercase; }
 .muted { color: var(--muted); }
 .num { font-variant-numeric: tabular-nums; font-family: var(--mono); }
 header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 16px;
-  border-bottom: 3px solid var(--ink); padding-bottom: 16px; }
+  padding-bottom: 4px; }
 header .meta { display: flex; flex-direction: column; gap: 4px; text-align: right; font-size: .85rem; }
 section { display: flex; flex-direction: column; gap: 14px; }
 .sec-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 8px; }
@@ -104,7 +104,7 @@ details.battle summary:focus-visible, thead th:focus-visible { outline: 2px soli
 .tabs button:hover { color: var(--ink); }
 .tabs button[aria-selected="true"] { background: var(--ink); color: var(--bg); }
 .tabs button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.tabpanel { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
+.tabpanel { display: flex; flex-direction: column; gap: 14px; padding-top: 18px; }
 table.heat th, table.heat td { padding: 0; text-align: center; font-size: .72rem; min-width: 30px; height: 30px; border-bottom: 1px solid var(--surface); border-right: 1px solid var(--surface); }
 table.heat th:first-child, table.heat td:first-child { text-align: left; padding: 0 10px; min-width: 120px; position: sticky; left: 0; background: var(--surface); z-index: 1; }
 table.heat thead th { cursor: default; font-family: var(--mono); font-size: .7rem; letter-spacing: 0; }
@@ -121,6 +121,7 @@ tfoot td { font-weight: 600; border-top: 2px solid var(--ink); border-bottom: 0;
 .note { font-size: .82rem; color: var(--muted); max-width: 78ch; }
 .note code { font-family: var(--mono); font-size: .78rem; background: var(--chip); padding: 0 4px; }
 @media (max-width: 760px) {
+  .tabs button { font-size: 1.05rem; padding: 6px 10px 4px; }
   .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   details.battle summary { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .b-title { grid-column: 1 / -1; }
@@ -143,51 +144,53 @@ tfoot td { font-weight: 600; border-top: 2px solid var(--ink); border-bottom: 0;
     </div>
   </header>
 
-  <section aria-labelledby="pot-h">
-    <div class="sec-head"><h2 id="pot-h">Puissance de frappe</h2><span class="muted" id="pot-sub"></span></div>
-    <div class="tiles" id="tiles"></div>
-    <div class="controls">
-      <label for="food">Nourriture
-        <select id="food"></select>
-      </label>
-      <label for="bonus">Bonus de bataille <input type="range" id="bonus" min="0" max="200" step="1" value="0"> <span class="bonus-num">+<input type="number" id="bonus-n" min="0" max="1000" step="0.1" value="0" inputmode="decimal" aria-label="Bonus de bataille en pourcentage"> %</span></label>
-      <label for="nobuff"><input type="checkbox" id="nobuff"> Ignorer buffs/débuffs temporaires</label>
-      <label for="armor"><input type="checkbox" id="armor" checked> Armure/esquive réduisent le coût en santé</label>
-    </div>
-    <div class="table-box">
-      <table id="members">
-        <thead><tr>
-          <th data-k="name" tabindex="0">Joueur</th>
-          <th data-k="level" tabindex="0">Niv.</th>
-          <th data-k="atk" tabindex="0">Attaque</th>
-          <th data-k="prec" tabindex="0">Précision</th>
-          <th data-k="cc" tabindex="0">Crit %</th>
-          <th data-k="cd" tabindex="0">Dégâts crit</th>
-          <th data-k="perHit" tabindex="0">Par coup</th>
-          <th data-k="hitsNow" tabindex="0">Coups dispo</th>
-          <th data-k="dmgNow" tabindex="0">Dégâts dispo</th>
-          <th data-k="hitsDay" tabindex="0">Coups / jour</th>
-          <th data-k="dmgDay" tabindex="0">Dégâts / jour</th>
-          <th data-k="period" tabindex="0">Infligés (période)</th>
-        </tr></thead>
-        <tbody></tbody>
-      </table>
-    </div>
-    <p class="note">
-      Estimation par coup : <code>attaque × (précision + (1 − précision) × 0,5) × (1 + crit % × dégâts crit %)</code>, calibrée sur des coups réels
-      (un coup raté fait environ la moitié, un critique multiplie par 1 + dégâts critiques). Un coup coûte 10 santé ; l'armure et l'esquive réduisent ce coût.
-      « Dispo » = santé actuelle + faim actuelle convertie en nourriture. « Par jour » = régénération de santé et de faim sur 24 h.
-      Les bonus de bataille (ordres de pays et de MU, alliance, patriotisme) se règlent avec le curseur.
-    </p>
-  </section>
-
   <section class="tabbed">
-    <div class="tabs" role="tablist" aria-label="Analyse par joueur">
-      <button type="button" role="tab" id="tab-sum" aria-controls="panel-sum" aria-selected="true">Bilan par joueur</button>
+    <div class="tabs" role="tablist" aria-label="Sections du rapport">
+      <button type="button" role="tab" id="tab-pot" aria-controls="panel-pot" aria-selected="true">Puissance de frappe</button>
+      <button type="button" role="tab" id="tab-sum" aria-controls="panel-sum" aria-selected="false" tabindex="-1">Bilan par joueur</button>
       <button type="button" role="tab" id="tab-act" aria-controls="panel-act" aria-selected="false" tabindex="-1">Heures de frappe</button>
+      <button type="button" role="tab" id="tab-bat" aria-controls="panel-bat" aria-selected="false" tabindex="-1">Batailles</button>
     </div>
 
-    <div class="tabpanel" id="panel-sum" role="tabpanel" aria-labelledby="tab-sum">
+    <div class="tabpanel" id="panel-pot" role="tabpanel" aria-labelledby="tab-pot">
+      <div class="sec-head"><span class="muted" id="pot-sub"></span></div>
+      <div class="tiles" id="tiles"></div>
+      <div class="controls">
+        <label for="food">Nourriture
+          <select id="food"></select>
+        </label>
+        <label for="bonus">Bonus de bataille <input type="range" id="bonus" min="0" max="200" step="1" value="0"> <span class="bonus-num">+<input type="number" id="bonus-n" min="0" max="1000" step="0.1" value="0" inputmode="decimal" aria-label="Bonus de bataille en pourcentage"> %</span></label>
+        <label for="nobuff"><input type="checkbox" id="nobuff"> Ignorer buffs/débuffs temporaires</label>
+        <label for="armor"><input type="checkbox" id="armor" checked> Armure/esquive réduisent le coût en santé</label>
+      </div>
+      <div class="table-box">
+        <table id="members">
+          <thead><tr>
+            <th data-k="name" tabindex="0">Joueur</th>
+            <th data-k="level" tabindex="0">Niv.</th>
+            <th data-k="atk" tabindex="0">Attaque</th>
+            <th data-k="prec" tabindex="0">Précision</th>
+            <th data-k="cc" tabindex="0">Crit %</th>
+            <th data-k="cd" tabindex="0">Dégâts crit</th>
+            <th data-k="perHit" tabindex="0">Par coup</th>
+            <th data-k="hitsNow" tabindex="0">Coups dispo</th>
+            <th data-k="dmgNow" tabindex="0">Dégâts dispo</th>
+            <th data-k="hitsDay" tabindex="0">Coups / jour</th>
+            <th data-k="dmgDay" tabindex="0">Dégâts / jour</th>
+            <th data-k="period" tabindex="0">Infligés (période)</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="note">
+        Estimation par coup : <code>attaque × (précision + (1 − précision) × 0,5) × (1 + crit % × dégâts crit %)</code>, calibrée sur des coups réels
+        (un coup raté fait environ la moitié, un critique multiplie par 1 + dégâts critiques). Un coup coûte 10 santé ; l'armure et l'esquive réduisent ce coût.
+        « Dispo » = santé actuelle + faim actuelle convertie en nourriture. « Par jour » = régénération de santé et de faim sur 24 h.
+        Les bonus de bataille (ordres de pays et de MU, alliance, patriotisme) se règlent avec le curseur.
+      </p>
+    </div>
+
+    <div class="tabpanel" id="panel-sum" role="tabpanel" aria-labelledby="tab-sum" hidden>
       <div class="sec-head"><span class="muted" id="sum-sub"></span></div>
       <div class="table-box">
         <table id="totals">
@@ -222,11 +225,11 @@ tfoot td { font-weight: 600; border-top: 2px solid var(--ink); border-bottom: 0;
       </div>
       <p class="note">Dégâts moyens infligés par jour à chaque heure (heure de Paris), mesurés en relevant le compteur de dégâts de chaque joueur toutes les 15 minutes. Les heures hachurées n'ont pas encore été mesurées (collecte trop récente ou relevé manqué). Cela inclut tous les dégâts du joueur, pas seulement ceux des batailles de la MU.</p>
     </div>
-  </section>
 
-  <section aria-labelledby="bat-h">
-    <div class="sec-head"><h2 id="bat-h">Batailles</h2><span class="muted" id="bat-sub"></span></div>
-    <div class="battles" id="battles"></div>
+    <div class="tabpanel" id="panel-bat" role="tabpanel" aria-labelledby="tab-bat" hidden>
+      <div class="sec-head"><span class="muted" id="bat-sub"></span></div>
+      <div class="battles" id="battles"></div>
+    </div>
   </section>
 </div>
 
