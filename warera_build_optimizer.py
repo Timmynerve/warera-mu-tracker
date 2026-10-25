@@ -8,7 +8,7 @@ reverse-engineered from the game client and checked against ~1,400 live hits:
     probability critChance/100 for x(1+critDamages/100)
   - armor and dodge go through x -> round(100x/(x+40)); a dodged hit costs no health and no armor wear,
     otherwise a hit costs healthCost*(1-armor/100) health
-  - each hit uses 1 ammo and 1 weapon durability; armor pieces lose 1 durability per non-dodged hit
+  - firearms need 1 ammo per hit (knives take none); each hit uses 1 weapon durability; armor pieces lose 1 durability per non-dodged hit
   - bars regenerate 10%/h; one food uses 1 hunger and restores healthRegenPercent% of max health
   - each lootChance % gives 1% (case1) and 0.01% (case2) per hit to loot a case (wooden map cases are ignored)
 Fighting also pays bounties and battle loot pool items (handed out by damage rank), both counted per 1k
@@ -28,6 +28,7 @@ SLOTS = ("weapon", "helmet", "chest", "pants", "boots", "gloves")
 FOODS = ("bread", "steak", "cookedFish")
 AMMOS = (None, "lightAmmo", "ammo", "heavyAmmo")
 PILL = "cocain"
+FIREARMS = ("gun", "rifle", "sniper", "tank", "jet")  # knives take no ammo, every other weapon needs some
 # Skills the optimizer may move points between ("companies" is fixed by --companies, management is left out)
 FREE_SKILLS = ("attack", "precision", "criticalChance", "criticalDamages", "armor", "dodge",
                "health", "hunger", "lootChance", "energy", "production", "entrepreneurship")
@@ -71,9 +72,15 @@ def load_equipment(csv_path, items, prices):
     return options
 
 
+def is_firearm(option):
+    """Every weapon except the knife (and bare hands) needs ammo to shoot."""
+    return option[0].split()[0] in FIREARMS
+
+
 def dominates(a, b):
-    """True when option a is at least as cheap and as strong as b on every stat, and better somewhere."""
-    if a is b or a[2] > b[2] or any(a[1].get(s, 0) < v for s, v in b[1].items()):
+    """True when option a is at least as cheap and as strong as b on every stat, and better somewhere
+    (only between options of the same ammo needs)."""
+    if a is b or a[2] > b[2] or is_firearm(a) != is_firearm(b) or any(a[1].get(s, 0) < v for s, v in b[1].items()):
         return False
     return a[2] < b[2] or any(a[1].get(s, 0) > v for s, v in b[1].items())
 
@@ -120,6 +127,8 @@ class Model:
 
     def evaluate(self, levels, gear, food, ammo, pill, income, budget):
         """Damage per day and spending breakdown for one full setup, fighting as much as the budget allows."""
+        if is_firearm(gear["weapon"]) != bool(ammo):
+            return None
         stats = {s: sum(opt[1].get(s, 0) for opt in gear.values()) for s in
                  ("attack", "criticalChance", "criticalDamages", "precision", "armor", "dodge")}
         precision = self.value("precision", levels["precision"]) + stats["precision"]
@@ -193,6 +202,10 @@ class Model:
             for ammo in AMMOS:
                 for pill in (False, True):
                     gear = dict(start) if start else {slot: equipment[slot][0] for slot in SLOTS}
+                    if is_firearm(gear["weapon"]) != bool(ammo):
+                        gear["weapon"] = next((o for o in equipment["weapon"] if is_firearm(o) == bool(ammo)), None)
+                        if gear["weapon"] is None:
+                            continue
                     result = self.evaluate(levels, gear, food, ammo, pill, income, budget)
                     if result is None:
                         continue
