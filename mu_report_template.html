@@ -717,7 +717,8 @@ function makeModel(member, playerLevel, bounty, budget) {
       hits += take; damage += take * b.dmg; spent += take * b.cost; foodUnits += take * b.eat;
       for (const [k, v] of Object.entries(b.flows)) totals[k] += take * v;
     }
-    return { damage, hits, foodUnits, totals, pill: fixed, net: incomeTotal - fixed - spent, attack, precision, critChance,
+    const attackTotal = attack * (1 + ammoPercent / 100) * (1 + rank / 100);  // as the game profile shows it, without pill
+    return { damage, hits, foodUnits, totals, pill: fixed, net: incomeTotal - fixed - spent, attack, attackTotal, precision, critChance,
              critDamage, armor, dodge, healthPerHit, maxHealth, maxHunger, baseDamage, weaponWear: hits / DURABILITY,
              armorWear: hits * (1 - dodge / 100) / DURABILITY };
   }
@@ -945,7 +946,9 @@ function renderOptimizer(member, best, now, current, totalPoints) {
     el("div", { class: "table-box" }, optTable(["Compétence", "Actuel", "Optimisé", "Δ", "Valeur"], skillRows)));
 
   const statRows = [
-    ["Attaque (avant multiplicateurs)", fmt(r.attack)], ["Précision", fmt(Math.min(r.precision, 100)) + " %"],
+    ["Attaque totale (munitions + rang militaire)", fmt(r.attackTotal)],
+    ...(best.usePill ? [[`Attaque pendant le buff de pilule (+${C[PILL].percentAttack} %)`, fmt(r.attackTotal * (1 + C[PILL].percentAttack / 100))]] : []),
+    ["Attaque de base (compétence + arme)", fmt(r.attack)], ["Précision", fmt(Math.min(r.precision, 100)) + " %"],
     ["Chance critique", fmt(Math.min(r.critChance, 100)) + " %"], ["Dégâts critiques", "×" + (1 + r.critDamage / 100).toFixed(2)],
     ["Armure (effective)", r.armor + " %"], ["Esquive (effective)", r.dodge + " %"],
     ["Santé max · faim max", `${r.maxHealth} · ${r.maxHunger}`], ["Santé par coup", r.healthPerHit.toFixed(2)],
