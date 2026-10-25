@@ -112,8 +112,15 @@ table.heat td.h { font-family: var(--mono); color: var(--ink); }
 table.heat td.h.hot { color: var(--surface); }
 table.heat td.na { background: repeating-linear-gradient(45deg, var(--chip), var(--chip) 4px, var(--surface) 4px, var(--surface) 8px); }
 table.heat td.tot { padding: 0 10px; text-align: right; font-family: var(--mono); min-width: 70px; }
-table.heat tr.mu td { font-weight: 600; border-bottom: 3px solid var(--surface); }
+table.heat tr.mu td { font-weight: 600; border-bottom: 14px solid var(--surface); }
+table.heat tr.mu td:first-child { color: var(--brass); text-transform: uppercase; letter-spacing: .04em; }
 table.heat tbody tr:hover { background: transparent; }
+table.heat td.name { cursor: pointer; user-select: none; }
+table.heat td.name:hover { color: var(--accent); }
+table.heat td.name:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+table.heat tr.sel td { box-shadow: inset 0 2px 0 var(--ink), inset 0 -2px 0 var(--ink); }
+table.heat tr.sel td.name { background: var(--ink); color: var(--bg); }
+table.heat.has-sel tbody tr:not(.sel):not(.mu) td { opacity: .35; }
 .legend { display: inline-flex; align-items: center; gap: 6px; font-size: .8rem; color: var(--muted); }
 .legend .lg { display: inline-block; width: 90px; height: 10px; background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 8%, var(--surface)), var(--accent)); }
 .empty { padding: 18px 16px; color: var(--muted); }
@@ -223,7 +230,7 @@ tfoot td { font-weight: 600; border-top: 2px solid var(--ink); border-bottom: 0;
           <tbody></tbody>
         </table>
       </div>
-      <p class="note">Dégâts moyens infligés par jour à chaque heure (heure de Paris), mesurés en relevant le compteur de dégâts de chaque joueur toutes les 15 minutes. Les heures hachurées n'ont pas encore été mesurées (collecte trop récente ou relevé manqué). Cela inclut tous les dégâts du joueur, pas seulement ceux des batailles de la MU.</p>
+      <p class="note">Dégâts moyens infligés par jour à chaque heure (heure de Paris), mesurés en relevant le compteur de dégâts de chaque joueur toutes les 15 minutes. Les heures hachurées n'ont pas encore été mesurées (collecte trop récente ou relevé manqué). Cliquer sur un pseudo met sa ligne en surbrillance (plusieurs joueurs possibles, recliquer pour retirer). Cela inclut tous les dégâts du joueur, pas seulement ceux des batailles de la MU.</p>
     </div>
 
     <div class="tabpanel" id="panel-bat" role="tabpanel" aria-labelledby="tab-bat" hidden>
@@ -393,6 +400,29 @@ function renderTotals() {
   document.getElementById("sum-sub").textContent = `${fmtDays(DATA.days)} · ${silent} joueur${silent > 1 ? "s" : ""} sans dégâts sur la période`;
 }
 
+const actSelected = new Set();
+
+function bindActivitySelect() {
+  const table = document.getElementById("activity");
+  const toggle = td => {
+    const tr = td.closest("tr");
+    const id = tr.dataset.id;
+    if (actSelected.has(id)) actSelected.delete(id); else actSelected.add(id);
+    const sel = actSelected.has(id);
+    tr.classList.toggle("sel", sel);
+    td.setAttribute("aria-pressed", String(sel));
+    table.classList.toggle("has-sel", actSelected.size > 0);
+  };
+  table.addEventListener("click", e => {
+    const td = e.target.closest("tbody td.name");
+    if (td) toggle(td);
+  });
+  table.addEventListener("keydown", e => {
+    const td = e.target.closest("tbody td.name");
+    if (td && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); toggle(td); }
+  });
+}
+
 function renderActivity() {
   const A = DATA.activity;
   const table = document.getElementById("activity");
@@ -406,28 +436,31 @@ function renderActivity() {
   const hours = [...Array(24).keys()];
   const measured = A.coverage.map(m => m / 60);
   const avg = arr => arr.map((v, h) => measured[h] > 0.05 ? v / measured[h] : null);
-  const rows = DATA.members.map(m => ({ name: m.name, vals: avg(A.users[m.id] || Array(24).fill(0)) }))
+  const rows = DATA.members.map(m => ({ id: m.id, name: m.name, vals: avg(A.users[m.id] || Array(24).fill(0)) }))
     .map(r => ({ ...r, total: r.vals.reduce((t, v) => t + (v || 0), 0) }))
     .sort((x, y) => y.total - x.total);
   const muVals = hours.map(h => measured[h] > 0.05 ? rows.reduce((t, r) => t + (r.vals[h] || 0), 0) : null);
   const scale = document.getElementById("act-scale").value;
   const globalMax = Math.max(...rows.flatMap(r => r.vals.map(v => v || 0)), 1);
-  const cell = (v, max) => {
+  const cell = (v, max, color = "var(--accent)") => {
     if (v == null) return el("td", { class: "na", title: "non mesuré" });
     const f = max > 0 ? v / max : 0;
     const td = el("td", { class: "h" + (f > 0.55 ? " hot" : ""), title: `${fmt(v)} dégâts en moyenne` });
-    td.style.background = f > 0 ? `color-mix(in srgb, var(--accent) ${Math.round(8 + 92 * f)}%, var(--surface))` : "var(--surface)";
-    if (f >= 0.5) td.textContent = short(v).replace(" Md", "Md").replace(" k", "k").replace(" M", "M");
+    td.style.background = f > 0 ? `color-mix(in srgb, ${color} ${Math.round(8 + 92 * f)}%, var(--surface))` : "var(--surface)";
+    if (v >= 1) td.textContent = v >= 1e3 && v < 1e4 ? (v / 1e3).toLocaleString("fr-FR", { maximumFractionDigits: 1 }) + "k" : short(v).replace(" Md", "Md").replace(" k", "k").replace(" M", "M");
     return td;
   };
   table.querySelector("thead").replaceChildren(el("tr", {}, el("th", { text: "Joueur" }), ...hours.map(h => el("th", { text: h + "h" })), el("th", { text: "/ jour" })));
   const muMax = Math.max(...muVals.map(v => v || 0), 1);
   const muTotal = muVals.reduce((a, b) => a + (b || 0), 0);
-  const muRow = el("tr", { class: "mu" }, el("td", { text: "Total MU" }), ...hours.map(h => cell(muVals[h], muMax)), el("td", { class: "tot", text: short(muTotal) }));
+  const muRow = el("tr", { class: "mu" }, el("td", { text: "Total MU" }), ...hours.map(h => cell(muVals[h], muMax, "var(--brass)")), el("td", { class: "tot", text: short(muTotal) }));
   table.querySelector("tbody").replaceChildren(muRow, ...rows.map(r => {
     const max = scale === "row" ? Math.max(...r.vals.map(v => v || 0)) : globalMax;
-    return el("tr", {}, el("td", { class: "name", text: r.name }), ...hours.map(h => cell(r.vals[h], max)), el("td", { class: "tot", text: r.total ? short(r.total) : "–" }));
+    const sel = actSelected.has(String(r.id));
+    const name = el("td", { class: "name", text: r.name, tabindex: "0", role: "button", "aria-pressed": String(sel), title: "Cliquer pour mettre en surbrillance" });
+    return el("tr", { class: sel ? "sel" : "", "data-id": r.id }, name, ...hours.map(h => cell(r.vals[h], max)), el("td", { class: "tot", text: r.total ? short(r.total) : "–" }));
   }));
+  table.classList.toggle("has-sel", actSelected.size > 0);
   const days = (new Date(A.end) - new Date(A.start)) / 864e5;
   const covered = measured.filter(m => m > 0.05).length;
   sub.textContent = `${A.snapshots} relevés depuis le ${startTxt} · ${days.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} jour(s) · ${covered}/24 heures mesurées`;
@@ -537,6 +570,7 @@ function init() {
   const actScale = document.getElementById("act-scale");
   actScale.value = store.get("actScale") || "row";
   actScale.addEventListener("input", () => { store.set("actScale", actScale.value); renderActivity(); });
+  bindActivitySelect();
   initTabs();
   renderMembers(); renderTotals(); renderActivity(); renderBattles();
 }
