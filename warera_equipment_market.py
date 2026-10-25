@@ -3,7 +3,10 @@
 Open offers are not readable with an API token, so this uses completed market sales instead.
 The token is read from the WARERA_API_TOKEN environment variable.
 
+Also writes the current food, ammo and pill prices to a second CSV.
+
 Usage: python warera_equipment_market.py [--days 7] [--max-per-item 3000] [--out equipment_market_summary.csv]
+       [--consumables-out consumables_market.csv]
 """
 import argparse
 import csv
@@ -108,11 +111,45 @@ def summarize(code, item, sales):
     }
 
 
+def consumable_rows(items, headers):
+    """Food, ammo and pill prices from the order book, with the cost of each effect point."""
+    averages = api("itemTrading.getPrices", {}, headers)
+    rows = []
+    for code, item in items.items():
+        stats = item.get("flatStats", {})
+        effect = stats.get("healthRegenPercent") or stats.get("percentAttack")
+        if not effect:
+            continue
+        sell_orders = api("tradingOrder.getTopOrders", {"itemCode": code}, headers).get("sellOrders", [])
+        price = sell_orders[0]["price"] if sell_orders else averages.get(code)
+        kind = "food" if "healthRegenPercent" in stats else ("pill" if "buffDurationHours" in stats else "ammo")
+        rows.append({
+            "item": code,
+            "kind": kind,
+            "effect": f"+{effect}% {'max health restored (1 hunger)' if kind == 'food' else 'attack'}"
+                      + (f" for {stats['buffDurationHours']}h, then -{effect}% for {stats['debuffDurationHours']}h"
+                         if kind == "pill" else " per hit" if kind == "ammo" else ""),
+            "best_sell_price": price,
+            "average_price": round(averages.get(code, 0), 3),
+            "price_per_effect_percent": round(price / effect, 4) if price else None,
+        })
+        time.sleep(REQUEST_DELAY)
+    return rows
+
+
+def write_csv(path, rows):
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=rows[0].keys())
+        writer.writeheader()
+        writer.writerows(rows)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--days", type=float, default=7)
     parser.add_argument("--max-per-item", type=int, default=3000)
     parser.add_argument("--out", default="equipment_market_summary.csv")
+    parser.add_argument("--consumables-out", default="consumables_market.csv")
     args = parser.parse_args()
 
     token = os.environ.get("WARERA_API_TOKEN")
@@ -134,11 +171,13 @@ def main():
 
     if not rows:
         sys.exit("No sales found for the requested period.")
-    with open(args.out, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=rows[0].keys())
-        writer.writeheader()
-        writer.writerows(rows)
+    write_csv(args.out, rows)
     print(f"Summary written to {args.out} ({len(rows)} items, {sum(r['sales'] for r in rows)} sales)")
+
+    print("Loading consumable prices...")
+    consumables = consumable_rows(items, headers)
+    write_csv(args.consumables_out, consumables)
+    print(f"Consumables written to {args.consumables_out} ({len(consumables)} items)")
 
 
 if __name__ == "__main__":
