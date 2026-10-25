@@ -134,6 +134,56 @@ def fetch_member(user_id, u):
         "skills": {k: slim_skill(skills.get(k)) for k in (
             "attack", "precision", "criticalChance", "criticalDamages",
             "armor", "dodge", "health", "hunger")},
+        "skillLevels": {k: s.get("level", 0) for k, s in skills.items()},
+        "skillPoints": u.get("leveling", {}).get("totalSkillPoints"),
+    }
+
+
+def optimizer_data(config):
+    """Game rules, prices and equipment market data used by the OpTimmyZer tab.
+
+    Equipment prices come from recent market sales, which need an API token (WARERA_API_TOKEN);
+    without one the tab explains that it is unavailable."""
+    import os
+    sys.path.insert(0, str(Path(__file__).parent))  # isolated mode (python -I, as in CI) leaves the script dir out
+    from warera_build_optimizer import CRAFT, FREE_SKILLS
+    from warera_equipment_market import fetch_sales, summarize
+
+    items = config["items"]
+    prices = api("itemTrading.getPrices", {})
+    equipment = {code: item for code, item in items.items() if item.get("type") in ("weapon", "equipment")}
+    market = {}
+    token = os.environ.get("WARERA_API_TOKEN")
+    if token:
+        headers = {**HEADERS, "X-API-Key": token}
+        since = datetime.now(timezone.utc) - timedelta(days=3)
+        for code, item in equipment.items():
+            sales = fetch_sales(code, since, 500, headers)
+            if sales:
+                row = summarize(code, item, sales)
+                market[code] = {"low": row["median_low_roll"], "mid": row["median_full_state"],
+                                "high": row["median_high_roll"], "median": row["median_price"]}
+    skills = {k: {"unlockAt": s["levels"]["0"].get("unlockAtLevel", 1),
+                  "levels": [[lv["value"], lv["totalCost"]] for _, lv in sorted(s["levels"].items(), key=lambda x: int(x[0]))]}
+              for k, s in config["skills"].items() if k in FREE_SKILLS + ("companies",)}
+    return {
+        "skills": skills,
+        "freeSkills": FREE_SKILLS,
+        "equipment": {code: {"usage": it["usage"], "rarity": it["rarity"], "stats": it["dynamicStats"],
+                             "icon": it.get("iconImg") or f"{code}.png", "market": market.get(code)}
+                      for code, it in equipment.items()},
+        "consumables": {code: {**items[code]["flatStats"], "icon": items[code].get("iconImg") or f"{code}.png"}
+                        for code in ("bread", "steak", "cookedFish", "lightAmmo", "ammo", "heavyAmmo", "cocain")},
+        "prices": {k: prices.get(k) for k in ("bread", "steak", "cookedFish", "lightAmmo", "ammo", "heavyAmmo",
+                                             "cocain", "case1", "case2", "scraps", "steel")},
+        "wage": api("workOffer.getWageStats", {})["allowedRange"]["average"],
+        "craft": CRAFT,
+        "rules": {"healthCost": config["battle"]["healthCost"], "regenHours": config["user"]["regenDividedBy"],
+                  "energyPerAction": config["user"]["energyCostPerAction"],
+                  "resetCostPerPoint": config["user"]["resetSkillsCostPerPoint"]},
+        # same defaults as warera_build_optimizer.py
+        "defaults": {"companyIncome": 24, "ppValue": 0.11, "wageTax": 10, "bounty": 0.04, "poolLoot": 0.13,
+                     "battleMultiplier": 1.4},
     }
 
 
@@ -327,6 +377,9 @@ def main():
         })
     battle_rows.sort(key=lambda r: (r["isActive"], r.get("endedAt") or r["createdAt"]), reverse=True)
 
+    print("Loading optimizer prices...")
+    optimizer = optimizer_data(config)
+
     data = {
         "generatedAt": datetime.now(timezone.utc).isoformat(),
         "days": args.days,
@@ -340,6 +393,7 @@ def main():
         "healthCost": config["battle"].get("healthCost", 10),
         "members": members,
         "battles": battle_rows,
+        "optimizer": optimizer,
         "activity": build_activity(Path(__file__).parent / "damage_log.jsonl", list(member_ids),
                                    {m["id"]: m["buffs"] for m in members}, config["items"]),
     }

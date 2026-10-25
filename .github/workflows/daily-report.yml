@@ -27,6 +27,9 @@ jobs:
           python-version: "3.12"
 
       - name: Build report
+        env:
+          # read-only token for the equipment sales history used by the OpTimmyZer tab (optional)
+          WARERA_API_TOKEN: ${{ secrets.WARERA_API_TOKEN }}
         run: |
           mkdir -p _site
           python -I warera_mu_report.py --user Timmynerve --days 7 --out _site/index.html

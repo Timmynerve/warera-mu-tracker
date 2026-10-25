@@ -134,7 +134,28 @@ table.heat.has-sel tbody tr:not(.sel):not(.mu) td { opacity: .35; }
 tfoot td { font-weight: 600; border-top: 2px solid var(--ink); border-bottom: 0; }
 .note { font-size: .82rem; color: var(--muted); max-width: 78ch; }
 .note code { font-family: var(--mono); font-size: .78rem; background: var(--chip); padding: 0 4px; }
+#opt-out { display: flex; flex-direction: column; gap: 14px; }
+.opt-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+.opt-box { background: var(--surface); border: 1px solid var(--line); padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.opt-box h3 { font-family: var(--display); font-size: 1.2rem; text-transform: uppercase; margin: 0; letter-spacing: .02em; }
+.opt-box table th, .opt-box table td { padding: 5px 6px; }
+.opt-box table thead th { cursor: default; position: static; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); gap: 10px; }
+.card { border: 1px solid var(--line); border-top: 4px solid var(--rar, var(--line)); background: var(--bg); padding: 10px; display: flex; flex-direction: column; gap: 4px; align-items: center; text-align: center; min-width: 0; }
+.card img { width: 64px; height: 64px; object-fit: contain; }
+.card .slot { font-size: .7rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.card strong { font-family: var(--display); font-size: 1.1rem; line-height: 1.1; }
+.card .rar { font-size: .72rem; font-family: var(--mono); color: var(--rar); text-transform: uppercase; letter-spacing: .05em; }
+.card .st { font-size: .8rem; font-family: var(--mono); }
+.card .pr { font-size: .78rem; color: var(--muted); }
+.card.none { opacity: .55; }
+.up { color: var(--good); } .down { color: var(--bad); }
+.flow td.v { font-family: var(--mono); }
+.flow td:first-child { white-space: normal; }
+.flow tr.tot td { font-weight: 600; border-top: 2px solid var(--ink); }
+.flow img { width: 20px; height: 20px; object-fit: contain; vertical-align: middle; margin-right: 6px; }
 @media (max-width: 760px) {
+  .opt-grid { grid-template-columns: minmax(0, 1fr); }
   .tabs button { font-size: 1.05rem; padding: 6px 10px 4px; }
   .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   details.battle summary { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
@@ -164,6 +185,7 @@ tfoot td { font-weight: 600; border-top: 2px solid var(--ink); border-bottom: 0;
       <button type="button" role="tab" id="tab-sum" aria-controls="panel-sum" aria-selected="false" tabindex="-1">Bilan par joueur</button>
       <button type="button" role="tab" id="tab-act" aria-controls="panel-act" aria-selected="false" tabindex="-1">Heures de frappe</button>
       <button type="button" role="tab" id="tab-bat" aria-controls="panel-bat" aria-selected="false" tabindex="-1">Batailles</button>
+      <button type="button" role="tab" id="tab-opt" aria-controls="panel-opt" aria-selected="false" tabindex="-1">OpTimmyZer</button>
     </div>
 
     <div class="tabpanel" id="panel-pot" role="tabpanel" aria-labelledby="tab-pot">
@@ -245,6 +267,19 @@ tfoot td { font-weight: 600; border-top: 2px solid var(--ink); border-bottom: 0;
     <div class="tabpanel" id="panel-bat" role="tabpanel" aria-labelledby="tab-bat" hidden>
       <div class="sec-head"><span class="muted" id="bat-sub"></span></div>
       <div class="battles" id="battles"></div>
+    </div>
+
+    <div class="tabpanel" id="panel-opt" role="tabpanel" aria-labelledby="tab-opt" hidden>
+      <div class="sec-head"><span class="muted" id="opt-sub">Répartition des points, équipement et consommables qui maximisent les dégâts par jour pour un budget journalier donné.</span></div>
+      <div class="controls">
+        <label for="opt-player">Joueur <select id="opt-player"></select></label>
+        <label for="opt-level">Niveau <select id="opt-level"></select></label>
+        <label for="opt-companies">Entreprises actives <select id="opt-companies"></select></label>
+        <label for="opt-bounty">Prime <span class="bonus-num"><input type="number" id="opt-bounty" min="0" step="0.01" value="0.04" inputmode="decimal"> / 1k dégâts</span></label>
+        <label for="opt-budget">Perte journalière acceptée <span class="bonus-num"><input type="number" id="opt-budget" min="0" step="10" value="0" inputmode="decimal"></span></label>
+        <span class="muted" id="opt-status" role="status"></span>
+      </div>
+      <div id="opt-out"></div>
     </div>
   </section>
 </div>
@@ -556,6 +591,398 @@ function bindSort(id, key, render) {
   });
 }
 
+/* ---------- OpTimmyZer: same model as warera_build_optimizer.py ---------- */
+const OPT = DATA.optimizer;
+const SLOTS = ["weapon", "helmet", "chest", "pants", "boots", "gloves"];
+const SLOT_LABELS = { weapon: "Arme", helmet: "Casque", chest: "Torse", pants: "Pantalon", boots: "Bottes", gloves: "Gants" };
+const ITEM_LABELS = { knife: "Couteau", gun: "Pistolet", rifle: "Fusil", sniper: "Sniper", tank: "Tank", jet: "Jet",
+  helmet: "Casque", chest: "Torse", pants: "Pantalon", boots: "Bottes", gloves: "Gants", bread: "Pain", steak: "Steak",
+  cookedFish: "Poisson cuit", lightAmmo: "Munitions légères", ammo: "Munitions", heavyAmmo: "Munitions lourdes",
+  cocain: "Pilule", case1: "Caisses", scraps: "Scraps", steel: "Acier" };
+const RARITY = { common: ["Commun", "#8a8f98"], uncommon: ["Peu commun", "#3f9b4f"], rare: ["Rare", "#2f7fd0"],
+  epic: ["Épique", "#9b55d6"], legendary: ["Légendaire", "#e08a1e"], mythic: ["Mythique", "#d04545"] };
+const SKILL_LABELS = { attack: "Attaque", precision: "Précision", criticalChance: "Chance crit.", criticalDamages: "Dégâts crit.",
+  armor: "Armure", dodge: "Esquive", health: "Santé", hunger: "Faim", lootChance: "Butin", energy: "Énergie",
+  production: "Production", entrepreneurship: "Entrepreneuriat", companies: "Entreprises" };
+const STAT_LABELS = { attack: "att.", criticalChance: "crit", criticalDamages: "dég. crit", precision: "préc.", armor: "armure", dodge: "esquive" };
+const ROLLS = { low: 0.1, mid: 0.5, high: 0.9 };
+const ROLL_LABELS = { low: "tirage faible", mid: "tirage moyen", high: "tirage fort" };
+const FOODS = ["bread", "steak", "cookedFish"], AMMOS = [null, "lightAmmo", "ammo", "heavyAmmo"], PILL = "cocain";
+const MISS_DAMAGE = 0.5, DURABILITY = 100, SOFT_CAP_DIVISOR = 40, SEARCH_RESTARTS = 6;
+const itemImg = code => `https://media.warera.io/images/itemsv2/${(OPT.equipment[code] || OPT.consumables[code] || {}).icon || code + ".png"}?v=2`;
+const money = n => n.toLocaleString("fr-FR", { maximumFractionDigits: Math.abs(n) < 10 ? 2 : 0 });
+const skillValue = (s, lv) => OPT.skills[s].levels[lv][0];
+const skillCost = (s, lv) => OPT.skills[s].levels[lv][1];
+const softCap = x => x > 0 ? Math.round(100 * x / (x + SOFT_CAP_DIVISOR)) : 0;
+const spentPoints = lv => Object.entries(lv).reduce((t, [s, l]) => t + skillCost(s, l), 0);
+const tick = () => new Promise(r => setTimeout(r));
+
+function gearOptions() {
+  // Options per slot with their lifetime cost: buying (market) or crafting, minus the scraps from dismantling it worn out
+  const scrap = OPT.prices.scraps, steel = OPT.prices.steel;
+  const out = Object.fromEntries(SLOTS.map(s => [s, [{ code: null, stats: {}, buy: 0, salvage: 0, cost: 0 }]]));
+  for (const [code, it] of Object.entries(OPT.equipment)) {
+    if (!it.market) continue;
+    const [craftScraps, craftSteel, salvageScraps] = OPT.craft[it.rarity];
+    const salvage = salvageScraps * scrap;
+    for (const [roll, pos] of Object.entries(ROLLS)) {
+      const stats = Object.fromEntries(Object.entries(it.stats).map(([s, [lo, hi]]) => [s, lo + pos * (hi - lo)]));
+      const buy = it.market[roll] ?? it.market.median;
+      out[it.usage].push({ code, roll, source: "market", stats, buy, salvage, cost: buy - salvage });
+      if (roll === "mid") {  // a craft rolls at random, so count on the average stats
+        const b = craftScraps * scrap + craftSteel * steel;
+        out[it.usage].push({ code, roll, source: "craft", stats, buy: b, salvage, cost: b - salvage, craftScraps, craftSteel });
+      }
+    }
+  }
+  const beats = (a, b) => a !== b && a.cost <= b.cost && Object.entries(b.stats).every(([s, v]) => (a.stats[s] || 0) >= v)
+    && (a.cost < b.cost || Object.entries(b.stats).some(([s, v]) => (a.stats[s] || 0) > v));
+  for (const s of SLOTS) out[s] = out[s].filter(o => !out[s].some(p => beats(p, o))).sort((a, b) => a.cost - b.cost);
+  return out;
+}
+
+function makeModel(member, playerLevel, bounty, budget) {
+  const D = OPT.defaults, R = OPT.rules, P = OPT.prices, C = OPT.consumables;
+  const rank = member.skills.attack?.militaryRankPercent || 0;
+  const regenDay = 24 / R.regenHours;
+  const wage = OPT.wage * (1 - D.wageTax / 100);
+  const pill = C[PILL];
+  const cycle = pill.buffDurationHours + pill.debuffDurationHours;
+  const earnPerDamage = { bounty: D.battleMultiplier * bounty / 1000, pool: D.battleMultiplier * D.poolLoot / 1000 };
+  const maxLevel = s => playerLevel < OPT.skills[s].unlockAt ? 0 : OPT.skills[s].levels.length - 1;
+
+  const income = (lv, companies) => {
+    const production = skillValue("production", lv.production);
+    return {
+      companies: companies * D.companyIncome,
+      ownWork: regenDay * skillValue("entrepreneurship", lv.entrepreneurship) / R.energyPerAction * production * D.ppValue,
+      job: regenDay * skillValue("energy", lv.energy) / R.energyPerAction * production * wage,
+    };
+  };
+
+  function evaluate(lv, gear, food, ammo, usePill, inc) {
+    // Damage per day and money flows for one setup, fighting as much as the budget allows
+    const st = k => SLOTS.reduce((t, s) => t + (gear[s].stats[k] || 0), 0);
+    const precision = skillValue("precision", lv.precision) + st("precision");
+    const critChance = skillValue("criticalChance", lv.criticalChance) + st("criticalChance");
+    const attack = skillValue("attack", lv.attack) + st("attack") + 4 * Math.max(0, precision - 100);
+    const critDamage = skillValue("criticalDamages", lv.criticalDamages) + st("criticalDamages") + 4 * Math.max(0, critChance - 100);
+    const p = Math.min(precision, 100) / 100, c = Math.min(critChance, 100) / 100;
+    const ammoPercent = ammo ? C[ammo].percentAttack : 0;
+    const baseDamage = attack * (1 + ammoPercent / 100) * (1 + rank / 100) * (p * (1 + c * critDamage / 100) + (1 - p) * MISS_DAMAGE);
+    const armor = softCap(skillValue("armor", lv.armor) + st("armor"));
+    const dodge = softCap(skillValue("dodge", lv.dodge) + st("dodge"));
+    const healthPerHit = R.healthCost * (1 - armor / 100) * (1 - dodge / 100);
+    const loot = skillValue("lootChance", lv.lootChance) / 100;
+    const armorShare = (1 - dodge / 100) / DURABILITY;
+    const sumArmor = k => SLOTS.slice(1).reduce((t, s) => t + gear[s][k], 0);
+    const perHit = {
+      gear: gear.weapon.buy / DURABILITY + armorShare * sumArmor("buy"),
+      salvage: -(gear.weapon.salvage / DURABILITY + armorShare * sumArmor("salvage")),
+      ammo: ammo ? P[ammo] : 0,
+      cases: -loot * (P.case1 + P.case2 / 100),
+    };
+    const maxHealth = skillValue("health", lv.health), maxHunger = skillValue("hunger", lv.hunger);
+    const foodHealth = C[food].healthRegenPercent / 100 * maxHealth;
+    let windows, fixed = 0;
+    if (usePill) {
+      // start the buff with full bars, fight through it, then use what regenerates during the debuff
+      const scale = 24 / cycle, buffRefills = 1 + pill.buffDurationHours / R.regenHours;
+      windows = [[buffRefills * scale, 1 + pill.percentAttack / 100],
+                 [(cycle / R.regenHours - buffRefills) * scale, 1 - pill.percentAttack / 100]];
+      fixed = P[PILL] * scale;
+    } else windows = [[regenDay, 1]];
+    const batches = [];
+    for (const [refills, mult] of windows) {
+      const dmg = baseDamage * mult;
+      const flows = { ...perHit, bounty: -dmg * earnPerDamage.bounty, pool: -dmg * earnPerDamage.pool };
+      batches.push({ count: refills * maxHealth / healthPerHit, dmg, flows: { ...flows, food: 0 }, eat: 0 });
+      batches.push({ count: refills * maxHunger * foodHealth / healthPerHit, dmg,
+                     flows: { ...flows, food: P[food] * healthPerHit / foodHealth }, eat: healthPerHit / foodHealth });
+    }
+    for (const b of batches) b.cost = Object.values(b.flows).reduce((t, v) => t + v, 0);
+    batches.sort((x, y) => (x.cost > 0 ? -x.dmg / x.cost : -Infinity) - (y.cost > 0 ? -y.dmg / y.cost : -Infinity));
+    const incomeTotal = Object.values(inc).reduce((t, v) => t + v, 0);
+    const cash = incomeTotal - fixed + budget;
+    if (cash < 0) return null;
+    let hits = 0, damage = 0, spent = 0, foodUnits = 0, pillHits = 0;
+    const totals = { gear: 0, salvage: 0, ammo: 0, cases: 0, bounty: 0, pool: 0, food: 0 };
+    for (const b of batches) {
+      const take = b.cost <= 0 ? b.count : Math.min(b.count, (cash - spent) / b.cost);
+      if (take <= 0) continue;
+      hits += take; damage += take * b.dmg; spent += take * b.cost; foodUnits += take * b.eat;
+      for (const [k, v] of Object.entries(b.flows)) totals[k] += take * v;
+    }
+    return { damage, hits, foodUnits, totals, pill: fixed, net: incomeTotal - fixed - spent, attack, precision, critChance,
+             critDamage, armor, dodge, healthPerHit, maxHealth, maxHunger, baseDamage, weaponWear: hits / DURABILITY,
+             armorWear: hits * (1 - dodge / 100) / DURABILITY };
+  }
+
+  function bestSetup(lv, companies, equipment, start) {
+    const inc = income(lv, companies);
+    let best = null;
+    for (const food of FOODS) for (const ammo of AMMOS) for (const usePill of [false, true]) {
+      let gear = start ? { ...start } : Object.fromEntries(SLOTS.map(s => [s, equipment[s][0]]));
+      let r = evaluate(lv, gear, food, ammo, usePill, inc);
+      if (!r) continue;
+      for (let improved = true; improved;) {
+        improved = false;
+        for (const s of SLOTS) for (const o of equipment[s]) {
+          const trial = { ...gear, [s]: o };
+          const t = evaluate(lv, trial, food, ammo, usePill, inc);
+          if (t && t.damage > r.damage + 1e-6) { gear = trial; r = t; improved = true; }
+        }
+      }
+      if (!best || r.damage > best.result.damage) best = { gear, food, ammo, usePill, result: r, income: inc };
+    }
+    return best;
+  }
+
+  function fit(lv, points) {
+    lv = Object.fromEntries(OPT.freeSkills.map(s => [s, Math.min(lv[s] || 0, maxLevel(s))]));
+    while (spentPoints(lv) > points) { const s = OPT.freeSkills.reduce((a, b) => lv[b] > lv[a] ? b : a); lv[s]--; }
+    return lv;
+  }
+
+  function randomLevels(points, rnd) {
+    const lv = Object.fromEntries(OPT.freeSkills.map(s => [s, 0]));
+    for (;;) {
+      const options = OPT.freeSkills.filter(s => lv[s] < maxLevel(s) && spentPoints({ ...lv, [s]: lv[s] + 1 }) <= points);
+      if (!options.length) return lv;
+      lv[options[Math.floor(rnd() * options.length)]]++;
+    }
+  }
+
+  async function optimize(points, companies, equipment, seed, isStale) {
+    // Hill climbing on skill levels: move one level between two skills while damage improves
+    let s = 1;
+    const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647;
+    let overall = null;
+    for (let restart = 0; restart < SEARCH_RESTARTS; restart++) {
+      await tick();
+      if (isStale()) return null;
+      let lv = fit(restart === 0 && seed ? seed : randomLevels(points, rnd), points);
+      let setup = bestSetup(lv, companies, equipment);
+      if (!setup) continue;
+      for (;;) {
+        let bestMove = null;
+        for (const up of OPT.freeSkills) for (const down of [null, ...OPT.freeSkills]) {
+          if (up === down || lv[up] >= maxLevel(up) || (down && lv[down] === 0)) continue;
+          const trial = { ...lv, [up]: lv[up] + 1 };
+          if (down) trial[down]--;
+          if (spentPoints(trial) > points) continue;
+          const r = evaluate(trial, setup.gear, setup.food, setup.ammo, setup.usePill, income(trial, companies));
+          if (r && r.damage > setup.result.damage + 1e-6 && (!bestMove || r.damage > bestMove[0])) bestMove = [r.damage, trial];
+        }
+        if (!bestMove) {
+          const refreshed = bestSetup(lv, companies, equipment, setup.gear);
+          if (refreshed.result.damage <= setup.result.damage + 1e-6) break;
+          setup = refreshed;
+          continue;
+        }
+        lv = bestMove[1];
+        setup = bestSetup(lv, companies, equipment, setup.gear);
+      }
+      if (!overall || setup.result.damage > overall.result.damage) overall = { ...setup, levels: lv };
+    }
+    return overall;
+  }
+
+  return { evaluate, bestSetup, optimize, fit, maxLevel };
+}
+
+const optUi = {};
+let optRun = 0;
+let GEAR = null;
+
+function companiesFor(member) { return skillValue("companies", member.skillLevels?.companies || 0); }
+
+function initOptimizer() {
+  for (const id of ["player", "level", "companies", "bounty", "budget", "status", "out"]) optUi[id] = document.getElementById("opt-" + id);
+  if (!OPT || !Object.values(OPT.equipment).some(e => e.market)) {
+    optUi.out.replaceChildren(el("p", { class: "empty", text: "Prix des équipements indisponibles : le rapport doit être généré avec un jeton API (variable WARERA_API_TOKEN)." }));
+    return;
+  }
+  GEAR = gearOptions();
+  const members = DATA.members.filter(m => m.skillLevels && m.level).sort((a, b) => a.name.localeCompare(b.name, "fr"));
+  for (const m of members) optUi.player.append(el("option", { value: m.id, text: `${m.name} (niv. ${m.level})` }));
+  const me = members.find(m => m.id === store.get("optPlayer")) || members.find(m => m.name === "Timmynerve") || members[0];
+  optUi.player.value = me.id;
+  const companyLevels = OPT.skills.companies.levels;
+  optUi.companies.append(el("option", { value: "auto", text: "Auto (meilleur choix)" }),
+    ...companyLevels.map(([v]) => el("option", { value: String(v), text: String(v) })));
+  optUi.bounty.value = store.get("optBounty") || OPT.defaults.bounty;
+  const syncPlayer = () => {
+    const m = DATA.members.find(x => x.id === optUi.player.value);
+    optUi.level.replaceChildren(...Array.from({ length: Math.max(60, m.level + 20) }, (_, i) =>
+      el("option", { value: String(i + 1), text: String(i + 1) })));
+    optUi.level.value = String(m.level);
+    optUi.companies.value = String(companiesFor(m));
+  };
+  syncPlayer();
+  let timer;
+  const schedule = () => { clearTimeout(timer); timer = setTimeout(runOptimizer, 250); };
+  optUi.player.addEventListener("input", () => { store.set("optPlayer", optUi.player.value); syncPlayer(); schedule(); });
+  [optUi.level, optUi.companies].forEach(c => c.addEventListener("input", schedule));
+  [optUi.bounty, optUi.budget].forEach(c => c.addEventListener("input", () => { store.set("optBounty", optUi.bounty.value); schedule(); }));
+  // compute only once the tab is opened, so the other tabs load instantly
+  const tab = document.getElementById("tab-opt");
+  let started = false;
+  const start = () => { if (!started && tab.getAttribute("aria-selected") === "true") { started = true; runOptimizer(); } };
+  new MutationObserver(start).observe(tab, { attributes: true, attributeFilter: ["aria-selected"] });
+  start();
+}
+
+async function runOptimizer() {
+  const run = ++optRun, isStale = () => run !== optRun;
+  const member = DATA.members.find(m => m.id === optUi.player.value);
+  const level = Number(optUi.level.value);
+  const num = v => Math.max(0, parseFloat(String(v).replace(",", ".")) || 0);
+  const model = makeModel(member, level, num(optUi.bounty.value), num(optUi.budget.value));
+  const perLevel = member.skillPoints && member.level ? member.skillPoints / member.level : 4;
+  const totalPoints = Math.round(perLevel * level);
+  const current = Object.fromEntries(OPT.freeSkills.map(s => [s, member.skillLevels[s] || 0]));
+  const choice = optUi.companies.value;
+  const companyLevels = OPT.skills.companies.levels;
+  const candidates = (choice === "auto" ? companyLevels.map((_, i) => i) : [companyLevels.findIndex(([v]) => String(v) === choice)])
+    .filter(i => i >= 0 && i <= model.maxLevel("companies") && skillCost("companies", i) < totalPoints);
+  let best = null;
+  for (const [i, lvl] of candidates.entries()) {
+    optUi.status.textContent = candidates.length > 1 ? `Calcul en cours… (${i + 1}/${candidates.length})` : "Calcul en cours…";
+    const points = totalPoints - skillCost("companies", lvl);
+    const r = await model.optimize(points, companyLevels[lvl][0], GEAR, current, isStale);
+    if (isStale()) return;
+    if (r && (!best || r.result.damage > best.result.damage)) best = { ...r, companiesLevel: lvl, points };
+  }
+  if (!best) { optUi.status.textContent = ""; optUi.out.replaceChildren(el("p", { class: "empty", text: "Aucune configuration possible avec ces réglages." })); return; }
+  // reference: the player's current skills with the best gear for them, at their current company count
+  const curCompaniesLevel = member.skillLevels.companies || 0;
+  const now = level === member.level ? model.bestSetup(model.fit(current, totalPoints - skillCost("companies", curCompaniesLevel)),
+    companyLevels[curCompaniesLevel][0], GEAR) : null;
+  optUi.status.textContent = choice === "auto" ? `Meilleur choix : ${companyLevels[best.companiesLevel][0]} entreprises actives` : "";
+  renderOptimizer(member, best, now, current, totalPoints);
+}
+
+function optTable(head, rows, cls) {
+  return el("table", { class: cls || "" }, el("thead", {}, el("tr", {}, ...head.map(h => el("th", { text: h })))),
+    el("tbody", {}, ...rows));
+}
+
+function gearCard(slot, o, wearPerDay) {
+  if (!o.code) return el("div", { class: "card none" }, el("span", { class: "slot", text: SLOT_LABELS[slot] }), el("strong", { text: "Aucun" }));
+  const it = OPT.equipment[o.code];
+  const [rarLabel, rarColor] = RARITY[it.rarity];
+  const stats = Object.entries(o.stats).map(([s, v]) => `${STAT_LABELS[s] || s} ${Math.round(v)}`).join(" · ");
+  const source = o.source === "craft" ? `Fabriqué : ${o.craftScraps} scraps + ${o.craftSteel} acier (≈ ${money(o.buy)})`
+    : `Acheté ≈ ${money(o.buy)}`;
+  return el("div", { class: "card", style: `--rar:${rarColor}` },
+    el("span", { class: "slot", text: SLOT_LABELS[slot] }),
+    el("img", { src: itemImg(o.code), alt: "", loading: "lazy" }),
+    el("strong", { text: ITEM_LABELS[o.code.replace(/\d+$/, "")] || o.code }),
+    el("span", { class: "rar", text: `${rarLabel} · ${ROLL_LABELS[o.roll]}` }),
+    el("span", { class: "st", text: stats }),
+    el("span", { class: "pr", text: source }),
+    el("span", { class: "pr", text: `${wearPerDay.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} usé(s) / jour` }));
+}
+
+function consumableCard(code, qty, price, note) {
+  if (!code) return el("div", { class: "card none" }, el("span", { class: "slot", text: "Munitions" }), el("strong", { text: "Aucune" }), el("span", { class: "pr", text: note }));
+  return el("div", { class: "card" },
+    el("img", { src: itemImg(code), alt: "", loading: "lazy" }),
+    el("strong", { text: ITEM_LABELS[code] || code }),
+    el("span", { class: "st", text: note }),
+    el("span", { class: "pr", text: `${qty.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} / jour × ${money(price)} = ${money(qty * price)}` }));
+}
+
+function renderOptimizer(member, best, now, current, totalPoints) {
+  const r = best.result, D = OPT.defaults, P = OPT.prices, C = OPT.consumables;
+  const companies = OPT.skills.companies.levels[best.companiesLevel][0];
+  const all = { ...best.levels, companies: best.companiesLevel };
+  const cur = { ...current, companies: member.skillLevels.companies || 0 };
+  const changed = Object.keys(all).some(s => all[s] !== cur[s]);
+  const gearBuy = SLOTS.reduce((t, s) => t + best.gear[s].buy, 0);
+  const resetCost = changed ? OPT.rules.resetCostPerPoint * spentPoints(cur) : 0;
+  const investment = resetCost + gearBuy + (best.usePill ? P[PILL] : 0);
+  const dmgReal = r.damage * D.battleMultiplier;
+
+  const tiles = el("div", { class: "tiles" },
+    tile("Dégâts / jour", short(dmgReal), `avec bonus de bataille ×${D.battleMultiplier} · ${short(r.damage)} sans` +
+      (now ? ` · actuel ${short(now.result.damage * D.battleMultiplier)}` : "")),
+    tile("Coups / jour", fmt(r.hits), now ? `actuel ${fmt(now.result.hits)}` : ""),
+    tile("Bilan / jour", (r.net >= 0 ? "+" : "") + money(r.net), "revenus − dépenses"),
+    tile("Investissement de départ", money(investment), changed ? "réinitialisation + équipement" : "équipement"));
+
+  const skillRows = [...OPT.freeSkills, "companies"].map(s => {
+    const a = cur[s], b = all[s], d = b - a;
+    return el("tr", {}, el("td", { text: SKILL_LABELS[s] || s }), el("td", { class: "num", text: String(a) }),
+      el("td", { class: "num", text: String(b) }),
+      el("td", { class: "num " + (d > 0 ? "up" : d < 0 ? "down" : "muted"), text: d ? (d > 0 ? "+" : "") + d : "=" }),
+      el("td", { class: "num muted", text: String(skillValue(s, b)) }));
+  });
+  const skills = el("div", { class: "opt-box" }, el("h3", { text: "Compétences" }),
+    el("span", { class: "muted", text: `${spentPoints(all)} / ${totalPoints} points · ${companies} entreprises actives` }),
+    el("div", { class: "table-box" }, optTable(["Compétence", "Actuel", "Optimisé", "Δ", "Valeur"], skillRows)));
+
+  const statRows = [
+    ["Attaque (avant multiplicateurs)", fmt(r.attack)], ["Précision", fmt(Math.min(r.precision, 100)) + " %"],
+    ["Chance critique", fmt(Math.min(r.critChance, 100)) + " %"], ["Dégâts critiques", "×" + (1 + r.critDamage / 100).toFixed(2)],
+    ["Armure (effective)", r.armor + " %"], ["Esquive (effective)", r.dodge + " %"],
+    ["Santé max · faim max", `${r.maxHealth} · ${r.maxHunger}`], ["Santé par coup", r.healthPerHit.toFixed(2)],
+    ["Dégâts moyens par coup (hors pilule)", fmt(r.baseDamage * D.battleMultiplier)],
+  ].map(([k, v]) => el("tr", {}, el("td", { text: k }), el("td", { class: "num", text: v })));
+  const stats = el("div", { class: "opt-box" }, el("h3", { text: "Statistiques" }),
+    el("div", { class: "table-box" }, optTable(["Statistique", "Valeur"], statRows)));
+
+  const gear = el("div", { class: "opt-box" }, el("h3", { text: "Équipement" }),
+    el("div", { class: "cards" }, ...SLOTS.map(s => gearCard(s, best.gear[s], s === "weapon" ? r.weaponWear : r.armorWear))));
+
+  const food = C[best.food];
+  const consumables = el("div", { class: "opt-box" }, el("h3", { text: "Consommables" }),
+    el("div", { class: "cards" },
+      consumableCard(best.food, r.foodUnits, P[best.food], `+${food.healthRegenPercent} % santé (1 faim)`),
+      consumableCard(best.ammo, r.hits, best.ammo ? P[best.ammo] : 0, best.ammo ? `+${C[best.ammo].percentAttack} % attaque par coup` : "pas rentable ici"),
+      best.usePill ? consumableCard(PILL, r.pill / P[PILL], P[PILL], `+${C[PILL].percentAttack} % pendant ${C[PILL].buffDurationHours} h, puis malus ${C[PILL].debuffDurationHours} h`)
+        : el("div", { class: "card none" }, el("span", { class: "slot", text: "Pilule" }), el("strong", { text: "Aucune" }))));
+
+  const flowRow = (label, value, icon, detail) => el("tr", {},
+    el("td", {}, icon ? el("img", { src: itemImg(icon), alt: "" }) : null, label, detail ? el("span", { class: "muted", text: " · " + detail }) : null),
+    el("td", { class: "num v " + (value >= 0 ? "up" : "down"), text: (value >= 0 ? "+" : "−") + money(Math.abs(value)) }));
+  const t = r.totals, inc = best.income;
+  const flows = [
+    flowRow("Entreprises automatisées", inc.companies, null, `${companies} × ${D.companyIncome}`),
+    flowRow("Travail dans tes entreprises", inc.ownWork),
+    flowRow("Emploi", inc.job),
+    flowRow("Primes", -t.bounty, null, `${optUi.bounty.value} / 1k dégâts`),
+    flowRow("Pool de butin de bataille", -t.pool, null, `${D.poolLoot} / 1k dégâts`),
+    flowRow("Revente des caisses", -t.cases, "case1", `${fmt(r.hits * skillValue("lootChance", best.levels.lootChance) / 100)} caisses`),
+    flowRow("Revente des scraps (démontage)", -t.salvage, "scraps"),
+    flowRow("Achat / fabrication d'équipement", -t.gear, null, `${r.weaponWear.toFixed(1)} arme + ${(5 * r.armorWear).toFixed(1)} pièces d'armure`),
+    flowRow("Nourriture", -t.food, best.food),
+    flowRow("Munitions", -t.ammo, best.ammo || "lightAmmo"),
+    flowRow("Pilule", -r.pill, PILL),
+  ].filter(row => row.lastChild.textContent !== "+0" && row.lastChild.textContent !== "−0");
+  flows.push(el("tr", { class: "tot" }, el("td", { text: "Bilan journalier" }),
+    el("td", { class: "num v", text: (r.net >= 0 ? "+" : "−") + money(Math.abs(r.net)) })));
+  const daily = el("div", { class: "opt-box" }, el("h3", { text: "Coût journalier détaillé" }),
+    el("div", { class: "table-box" }, optTable(["Poste", "Par jour"], flows, "flow")));
+
+  const invRows = [
+    changed ? ["Réinitialisation des compétences", resetCost, `${spentPoints(cur)} points × ${OPT.rules.resetCostPerPoint}`] : null,
+    ...SLOTS.filter(s => best.gear[s].code).map(s => [`${SLOT_LABELS[s]} : ${ITEM_LABELS[best.gear[s].code.replace(/\d+$/, "")]} ${RARITY[OPT.equipment[best.gear[s].code].rarity][0].toLowerCase()}`,
+      best.gear[s].buy, best.gear[s].source === "craft" ? "fabrication" : "marché"]),
+    best.usePill ? ["Première pilule", P[PILL], "marché"] : null,
+  ].filter(Boolean).map(([k, v, d]) => el("tr", {}, el("td", {}, k, el("span", { class: "muted", text: " · " + d })), el("td", { class: "num v", text: money(v) })));
+  invRows.push(el("tr", { class: "tot" }, el("td", { text: "Total" }), el("td", { class: "num v", text: money(investment) })));
+  const invest = el("div", { class: "opt-box" }, el("h3", { text: "Investissement de départ" }),
+    el("div", { class: "table-box" }, optTable(["Poste", "Montant"], invRows, "flow")));
+
+  optUi.out.replaceChildren(tiles,
+    el("div", { class: "opt-grid" }, skills, stats),
+    gear, consumables,
+    el("div", { class: "opt-grid" }, daily, invest),
+    el("p", { class: "note", text: "Modèle tiré du code du jeu et vérifié sur des coups réels : un coup raté fait moitié moins de dégâts, l'armure et l'esquive passent par x → 100x/(x+40), l'arme s'use à chaque coup et l'armure seulement quand le coup n'est pas esquivé. Les prix d'équipement sont les ventes médianes des 3 derniers jours ; un objet fabriqué ou acheté se démonte en fin de vie pour récupérer des scraps. Avec la pilule, on se bat pendant les 8 h de buff en partant de barres pleines. Revenus d'entreprise (24/jour), pool de butin (0,13 / 1k dégâts, calé sur l'historique de Timmynerve) et bonus de bataille moyen (×1,4) sont des estimations." }));
+}
+
 function init() {
   const mu = DATA.mu;
   document.getElementById("mu-name").textContent = mu.name;
@@ -589,6 +1016,7 @@ function init() {
   bindActivitySelect();
   initTabs();
   renderMembers(); renderTotals(); renderActivity(); renderBattles();
+  initOptimizer();
 }
 init();
 </script>
