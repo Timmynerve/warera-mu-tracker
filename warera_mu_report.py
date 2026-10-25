@@ -182,24 +182,66 @@ def battle_details(battles, mu_id, member_ids):
 
 
 MAX_GAP_MINUTES = 75
+DEFAULT_PILL = "cocain"
 
 
-def build_activity(log_path, member_ids):
-    """Turn cumulative damage snapshots into damage per local hour of day."""
+def pill_periods(buff_states, items):
+    """Rebuild buff and debuff time ranges from the end dates seen on a player.
+
+    A pill gives a buff, then a debuff that starts when the buff ends; each
+    duration comes from the item's flatStats in the game config.
+    """
+    def hours(code, key):
+        stats = (items.get(code) or items.get(DEFAULT_PILL) or {}).get("flatStats", {})
+        return timedelta(hours=stats.get(key) or 0)
+
+    periods = set()
+    for b in buff_states:
+        if b.get("buffEndAt"):
+            end = parse_date(b["buffEndAt"]).replace(second=0, microsecond=0)
+            code = (b.get("buffCodes") or [DEFAULT_PILL])[0]
+            periods.add(("buff", end - hours(code, "buffDurationHours"), end))
+        if b.get("debuffEndAt"):
+            end = parse_date(b["debuffEndAt"]).replace(second=0, microsecond=0)
+            code = (b.get("debuffCodes") or [DEFAULT_PILL])[0]
+            start = end - hours(code, "debuffDurationHours")
+            periods.add(("debuff", start, end))
+            periods.add(("buff", start - hours(code, "buffDurationHours"), start))
+    # The same pill is seen many times with slightly different end dates: merge overlaps.
+    merged = []
+    for kind, start, end in sorted(periods):
+        if merged and merged[-1][0] == kind and start <= merged[-1][2]:
+            merged[-1][2] = max(merged[-1][2], end)
+        else:
+            merged.append([kind, start, end])
+    return merged
+
+
+def build_activity(log_path, member_ids, current_buffs=None, items=None):
+    """Turn cumulative damage snapshots into damage per local hour of day.
+
+    Also counts, per hour, the measured minutes each player spent under a pill
+    buff or debuff.
+    """
     if not log_path.exists():
         return None
     snaps = []
+    seen_buffs = {uid: [b] for uid, b in (current_buffs or {}).items() if b}
     for line in log_path.read_text(encoding="utf-8").splitlines():
         try:
             e = json.loads(line)
             snaps.append((parse_date(e["t"]), e["c"]))
         except (ValueError, KeyError):
             continue
+        for uid, b in (e.get("b") or {}).items():
+            seen_buffs.setdefault(uid, []).append(b)
     snaps.sort(key=lambda s: s[0])
     if not snaps:
         return None
+    periods = {uid: pill_periods(states, items or {}) for uid, states in seen_buffs.items() if uid in member_ids}
     coverage = [0.0] * 24
     users = {uid: [0.0] * 24 for uid in member_ids}
+    pills = {kind: {uid: [0.0] * 24 for uid in periods} for kind in ("buff", "debuff")}
     for (t0, c0), (t1, c1) in zip(snaps, snaps[1:]):
         total_min = (t1 - t0).total_seconds() / 60
         if total_min <= 0 or total_min > MAX_GAP_MINUTES:
@@ -210,19 +252,27 @@ def build_activity(log_path, member_ids):
             local = cur.astimezone(REPORT_TZ)
             next_hour = (local.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)).astimezone(timezone.utc)
             nxt = min(t1, next_hour)
-            pieces.append((local.hour, (nxt - cur).total_seconds() / 60))
+            pieces.append((local.hour, cur, nxt))
             cur = nxt
-        for hour, minutes in pieces:
-            coverage[hour] += minutes
+        for hour, a, b in pieces:
+            coverage[hour] += (b - a).total_seconds() / 60
         for uid in member_ids:
             if uid in c0 and uid in c1 and c1[uid] >= c0[uid]:
                 delta = c1[uid] - c0[uid]
-                for hour, minutes in pieces:
-                    users[uid][hour] += delta * minutes / total_min
+                for hour, a, b in pieces:
+                    users[uid][hour] += delta * (b - a).total_seconds() / 60 / total_min
+        for uid, spans in periods.items():
+            for kind, start, end in spans:
+                for hour, a, b in pieces:
+                    overlap = (min(b, end) - max(a, start)).total_seconds() / 60
+                    if overlap > 0:
+                        pills[kind][uid][hour] += overlap
     return {
         "start": snaps[0][0].isoformat(), "end": snaps[-1][0].isoformat(), "snapshots": len(snaps),
         "coverage": [round(c, 1) for c in coverage],
         "users": {uid: [round(v) for v in vals] for uid, vals in users.items()},
+        **{kind + "s": {uid: [round(v, 1) for v in vals] for uid, vals in per_user.items() if any(vals)}
+           for kind, per_user in pills.items()},
     }
 
 
@@ -290,7 +340,8 @@ def main():
         "healthCost": config["battle"].get("healthCost", 10),
         "members": members,
         "battles": battle_rows,
-        "activity": build_activity(Path(__file__).parent / "damage_log.jsonl", list(member_ids)),
+        "activity": build_activity(Path(__file__).parent / "damage_log.jsonl", list(member_ids),
+                                   {m["id"]: m["buffs"] for m in members}, config["items"]),
     }
     template = (Path(__file__).parent / "mu_report_template.html").read_text(encoding="utf-8")
     html = template.replace("/*__DATA__*/null", json.dumps(data, ensure_ascii=False).replace("</", "<\\/"))

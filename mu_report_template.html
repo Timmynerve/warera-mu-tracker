@@ -110,6 +110,13 @@ table.heat th:first-child, table.heat td:first-child { text-align: left; padding
 table.heat thead th { cursor: default; font-family: var(--mono); font-size: .7rem; letter-spacing: 0; }
 table.heat td.h { font-family: var(--mono); color: var(--ink); }
 table.heat td.h.hot { color: var(--surface); }
+table.heat td.h { position: relative; }
+table.heat td.bf::before, table.heat td.db::after { content: ""; position: absolute; left: 2px; right: 2px; height: 2px; border-radius: 1px; }
+table.heat td.bf::before { bottom: 3px; background: var(--good); }
+table.heat td.db::after { bottom: 3px; background: var(--bad); }
+table.heat td.bf.db::before { bottom: 6px; }
+table.heat tbody tr:not(.mu) td { border-bottom-color: color-mix(in srgb, var(--muted) 45%, var(--surface)); }
+.legend i.pl { display: inline-block; width: 18px; height: 2px; border-radius: 1px; margin-left: 10px; }
 table.heat td.na { background: repeating-linear-gradient(45deg, var(--chip), var(--chip) 4px, var(--surface) 4px, var(--surface) 8px); }
 table.heat td.tot { padding: 0 10px; text-align: right; font-family: var(--mono); min-width: 70px; }
 table.heat tr.mu td { font-weight: 600; border-bottom: 14px solid var(--surface); }
@@ -222,7 +229,9 @@ tfoot td { font-weight: 600; border-top: 2px solid var(--ink); border-bottom: 0;
             <option value="all">Commune (comparer les joueurs)</option>
           </select>
         </label>
-        <span class="legend" aria-hidden="true">peu <i class="lg"></i> beaucoup</span>
+        <span class="legend" aria-hidden="true">peu <i class="lg"></i> beaucoup
+          <i class="pl" style="background: var(--good)"></i> buff
+          <i class="pl" style="background: var(--bad)"></i> débuff</span>
       </div>
       <div class="table-box" id="act-box">
         <table id="activity" class="heat">
@@ -230,7 +239,7 @@ tfoot td { font-weight: 600; border-top: 2px solid var(--ink); border-bottom: 0;
           <tbody></tbody>
         </table>
       </div>
-      <p class="note">Dégâts moyens infligés par jour à chaque heure (heure de Paris), mesurés en relevant le compteur de dégâts de chaque joueur toutes les 15 minutes. Les heures hachurées n'ont pas encore été mesurées (collecte trop récente ou relevé manqué). Cliquer sur un pseudo met sa ligne en surbrillance (plusieurs joueurs possibles, recliquer pour retirer). Cela inclut tous les dégâts du joueur, pas seulement ceux des batailles de la MU.</p>
+      <p class="note">Dégâts moyens infligés par jour à chaque heure (heure de Paris), mesurés en relevant le compteur de dégâts de chaque joueur toutes les 15 minutes. Les heures hachurées n'ont pas encore été mesurées (collecte trop récente ou relevé manqué). Cliquer sur un pseudo met sa ligne en surbrillance (plusieurs joueurs possibles, recliquer pour retirer). Un trait vert en bas d'une case signale que le joueur était sous buff de pilule pendant ce créneau au cours de la période, un trait rouge qu'il était sous débuff ; ces périodes sont reconstituées d'après les dates de fin relevées (buff de 8 h suivi d'un débuff de 15,5 h). Cela inclut tous les dégâts du joueur, pas seulement ceux des batailles de la MU.</p>
     </div>
 
     <div class="tabpanel" id="panel-bat" role="tabpanel" aria-labelledby="tab-bat" hidden>
@@ -442,10 +451,13 @@ function renderActivity() {
   const muVals = hours.map(h => measured[h] > 0.05 ? rows.reduce((t, r) => t + (r.vals[h] || 0), 0) : null);
   const scale = document.getElementById("act-scale").value;
   const globalMax = Math.max(...rows.flatMap(r => r.vals.map(v => v || 0)), 1);
-  const cell = (v, max, color = "var(--accent)") => {
+  const cell = (v, max, color = "var(--accent)", pill = {}) => {
     if (v == null) return el("td", { class: "na", title: "non mesuré" });
     const f = max > 0 ? v / max : 0;
-    const td = el("td", { class: "h" + (f > 0.55 ? " hot" : ""), title: `${fmt(v)} dégâts en moyenne` });
+    let title = `${fmt(v)} dégâts en moyenne`;
+    if (pill.buff) title += ` · sous buff ${pct(pill.buff)} du temps mesuré`;
+    if (pill.debuff) title += ` · sous débuff ${pct(pill.debuff)} du temps mesuré`;
+    const td = el("td", { class: "h" + (f > 0.55 ? " hot" : "") + (pill.buff ? " bf" : "") + (pill.debuff ? " db" : ""), title });
     td.style.background = f > 0 ? `color-mix(in srgb, ${color} ${Math.round(8 + 92 * f)}%, var(--surface))` : "var(--surface)";
     if (v >= 1) td.textContent = v >= 1e3 && v < 1e4 ? (v / 1e3).toLocaleString("fr-FR", { maximumFractionDigits: 1 }) + "k" : short(v).replace(" Md", "Md").replace(" k", "k").replace(" M", "M");
     return td;
@@ -458,7 +470,11 @@ function renderActivity() {
     const max = scale === "row" ? Math.max(...r.vals.map(v => v || 0)) : globalMax;
     const sel = actSelected.has(String(r.id));
     const name = el("td", { class: "name", text: r.name, tabindex: "0", role: "button", "aria-pressed": String(sel), title: "Cliquer pour mettre en surbrillance" });
-    return el("tr", { class: sel ? "sel" : "", "data-id": r.id }, name, ...hours.map(h => cell(r.vals[h], max)), el("td", { class: "tot", text: r.total ? short(r.total) : "–" }));
+    const pillAt = h => Object.fromEntries(["buff", "debuff"].map(k => {
+      const mins = A[k + "s"]?.[r.id]?.[h] || 0;
+      return [k, mins >= 5 && A.coverage[h] > 0 ? Math.min(1, mins / A.coverage[h]) : 0];
+    }));
+    return el("tr", { class: sel ? "sel" : "", "data-id": r.id }, name, ...hours.map(h => cell(r.vals[h], max, undefined, pillAt(h))), el("td", { class: "tot", text: r.total ? short(r.total) : "–" }));
   }));
   table.classList.toggle("has-sel", actSelected.size > 0);
   const days = (new Date(A.end) - new Date(A.start)) / 864e5;

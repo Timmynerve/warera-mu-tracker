@@ -27,7 +27,7 @@ def main():
 
     mu = wr.find_mu(args.user)
     profiles = wr.api_many([("user.getUserLite", {"userId": uid}) for uid in mu["members"]])
-    counters, names = {}, {}
+    counters, names, buffs = {}, {}, {}
     for uid, u in zip(mu["members"], profiles):
         if not u:
             continue
@@ -35,7 +35,9 @@ def main():
         if count is not None:
             counters[uid] = count
             names[uid] = u.get("username", "?")
-    entry = {"t": datetime.now(timezone.utc).isoformat(timespec="seconds"), "mu": mu["_id"], "c": counters, "n": names}
+        if u.get("buffs"):
+            buffs[uid] = u["buffs"]
+    entry = {"t": datetime.now(timezone.utc).isoformat(timespec="seconds"), "mu": mu["_id"], "c": counters, "n": names, "b": buffs}
     with LOG.open("a", encoding="utf-8") as f:
         f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
