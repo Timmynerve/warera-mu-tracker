@@ -10,7 +10,9 @@ reverse-engineered from the game client and checked against ~1,400 live hits:
     otherwise a hit costs healthCost*(1-armor/100) health
   - each hit uses 1 ammo and 1 weapon durability; armor pieces lose 1 durability per non-dodged hit
   - bars regenerate 10%/h; one food uses 1 hunger and restores healthRegenPercent% of max health
-Battle bonuses (orders, alliance, patriotic...) multiply every option equally and are left out.
+  - each lootChance % gives 1% (case1) and 0.01% (case2) per hit to loot a case (wooden map cases are ignored)
+Fighting also pays bounties and battle loot pool items (handed out by damage rank), both counted per 1k
+damage. Battle bonuses (orders, alliance, patriotic...) only scale those earnings and the damage shown.
 
 Usage: python warera_build_optimizer.py [--user Timmynerve] [--companies 4,6,8] [--max-daily-cost 0]
 """
@@ -86,8 +88,10 @@ class Model:
         self.regen_per_day = 24 / self.full_regen_hours
         self.energy_per_action = cfg["user"]["energyCostPerAction"]
         self.rank_percent = user["skills"]["attack"].get("militaryRankPercent") or 0
-        self.case_value = prices.get("case1", 0)
-        self.cases_per_hit_per_loot_point = args.case_rate / 100
+        self.case_values = (args.case_price or prices.get("case1", 0), prices.get("case2", 0))
+        self.bounty_per_1k = args.bounty_per_1k
+        self.pool_loot_per_1k = args.pool_loot_per_1k
+        self.battle_multiplier = args.battle_multiplier
         self.wage = wage
         self.pp_value = args.pp_value
         self.company_income = args.company_income
@@ -131,11 +135,13 @@ class Model:
         armor = soft_cap(self.value("armor", levels["armor"]) + stats["armor"])
         dodge = soft_cap(self.value("dodge", levels["dodge"]) + stats["dodge"])
         health_per_hit = self.health_cost * (1 - armor / 100) * (1 - dodge / 100)
-        loot = self.value("lootChance", levels["lootChance"])
-        cost_per_hit = (gear["weapon"][2] / DURABILITY
-                        + (1 - dodge / 100) * sum(gear[s][2] for s in SLOTS[1:]) / DURABILITY
-                        + (self.prices.get(ammo, 0) if ammo else 0)
-                        - loot * self.cases_per_hit_per_loot_point * self.case_value)
+        loot = self.value("lootChance", levels["lootChance"]) / 100
+        per_hit = {"gear wear": gear["weapon"][2] / DURABILITY
+                   + (1 - dodge / 100) * sum(gear[s][2] for s in SLOTS[1:]) / DURABILITY,
+                   "ammo": self.prices.get(ammo, 0) if ammo else 0,
+                   "cases": -loot * (self.case_values[0] + self.case_values[1] / 100)}
+        # bounty and loot pool pay per damage actually dealt, battle bonuses included
+        earnings_per_damage = self.battle_multiplier * (self.bounty_per_1k + self.pool_loot_per_1k) / 1000
 
         max_health = self.value("health", levels["health"])
         max_hunger = self.value("hunger", levels["hunger"])
@@ -153,27 +159,31 @@ class Model:
         else:
             windows, fixed = [(self.regen_per_day, 1)], 0
 
-        # Hit batches (hits, damage per hit, cost per hit), filled best damage-per-cost first
+        # Hit batches (hits, damage per hit, money flows per hit), filled best damage-per-net-cost first
         batches = []
         for refills, multiplier in windows:
             damage = base_damage * multiplier
-            batches.append((refills * max_health / health_per_hit, damage, cost_per_hit))
+            flows = {**per_hit, "bounty + loot pool": -damage * earnings_per_damage}
+            batches.append((refills * max_health / health_per_hit, damage, {**flows, "food": 0}))
             batches.append((refills * max_hunger * food_health / health_per_hit, damage,
-                            cost_per_hit + food_price * health_per_hit / food_health))
-        batches.sort(key=lambda b: -b[1] / b[2] if b[2] > 0 else -float("inf"))
+                            {**flows, "food": food_price * health_per_hit / food_health}))
+        batches = [(count, dmg, flows, sum(flows.values())) for count, dmg, flows in batches]
+        batches.sort(key=lambda b: -b[1] / b[3] if b[3] > 0 else -float("inf"))
         money = sum(income.values()) - fixed + budget
         if money < 0:
             return None
         hits = damage = spent = 0.0
-        for count, dmg, cost in batches:
+        totals = dict.fromkeys(list(per_hit) + ["bounty + loot pool", "food"], 0.0)
+        for count, dmg, flows, cost in batches:
             take = count if cost <= 0 else min(count, (money - spent) / cost)
             if take <= 0:
                 continue
             hits, damage, spent = hits + take, damage + take * dmg, spent + take * cost
-        return {"damage": damage, "hits": hits, "net": sum(income.values()) - fixed - spent,
+            for key, value in flows.items():
+                totals[key] += take * value
+        return {"damage": damage, "hits": hits, "net": sum(income.values()) - fixed - spent, "flows": totals,
                 "attack": attack, "precision": precision, "crit_chance": crit_chance, "crit_damage": crit_damage,
-                "armor": armor, "dodge": dodge, "health_per_hit": health_per_hit, "cost_per_hit": cost_per_hit,
-                "pill_per_day": fixed}
+                "armor": armor, "dodge": dodge, "health_per_hit": health_per_hit, "pill_per_day": fixed}
 
     def best_setup(self, levels, companies, budget, equipment, start=None):
         """Best gear + consumables for fixed skills (coordinate descent on gear for each consumable combo)."""
@@ -265,10 +275,12 @@ def print_setup(model, title, setup, points):
     print(f"Stats:  attack {r['attack']:.0f}, precision {r['precision']:.0f}, crit {r['crit_chance']:.0f}% "
           f"x{1 + r['crit_damage'] / 100:.2f}, armor {r['armor']}%, dodge {r['dodge']}%, "
           f"{r['health_per_hit']:.2f} health/hit")
-    income = sum(setup["income"].values())
-    print(f"Per day: {r['hits']:.0f} hits, {r['damage'] / 1e6:.2f}M damage (before battle bonuses), "
-          f"income {income:.0f} (" + ", ".join(f"{k} {v:.0f}" for k, v in setup["income"].items())
-          + f"), net cost per hit {r['cost_per_hit']:.2f}, pill {r['pill_per_day']:.0f}, balance {r['net']:+.0f}")
+    print(f"Per day: {r['hits']:.0f} hits, {r['damage'] / 1e6:.2f}M damage before battle bonuses "
+          f"(~{r['damage'] * model.battle_multiplier / 1e6:.2f}M with them), balance {r['net']:+.0f}")
+    earned = {**setup["income"], **{k: -v for k, v in r["flows"].items() if v < 0}}
+    spent = {**{k: v for k, v in r["flows"].items() if v > 0}, "pill": r["pill_per_day"]}
+    print("  earned: " + ", ".join(f"{k} {v:.0f}" for k, v in earned.items() if v >= 0.5))
+    print("  spent:  " + ", ".join(f"{k} {v:.0f}" for k, v in spent.items() if v >= 0.5))
 
 
 def main():
@@ -278,8 +290,12 @@ def main():
     parser.add_argument("--max-daily-cost", type=float, default=0, help="allowed daily loss (0 = self-financed)")
     parser.add_argument("--company-income", type=float, default=24, help="daily profit of one automated company")
     parser.add_argument("--pp-value", type=float, default=0.11, help="profit per production point in your own company")
-    parser.add_argument("--case-rate", type=float, default=0.055,
-                        help="cases per 100 hits per lootChance point (0.055 = ~0.8%% per hit at 15, from real history)")
+    parser.add_argument("--bounty-per-1k", type=float, default=0.04, help="bounty/contract money per 1k damage")
+    parser.add_argument("--pool-loot-per-1k", type=float, default=0.13,
+                        help="market value of battle loot pool items per 1k damage (0.13 = your Oct 2026 history)")
+    parser.add_argument("--case-price", type=float, help="value of one case1 (default: current market price)")
+    parser.add_argument("--battle-multiplier", type=float, default=1.4,
+                        help="average battle bonus multiplier (orders, alliance...), used for bounty and loot pool")
     parser.add_argument("--wage-tax", type=float, default=10, help="income tax on job wages, in percent")
     parser.add_argument("--equipment-csv", default="equipment_market_summary.csv")
     args = parser.parse_args()
