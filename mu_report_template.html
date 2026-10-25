@@ -964,7 +964,7 @@ function renderOptimizer(member, best, now, current, totalPoints) {
   const consumables = el("div", { class: "opt-box" }, el("h3", { text: "Consommables" }),
     el("div", { class: "cards" },
       consumableCard(best.food, r.foodUnits, P[best.food], `+${food.healthRegenPercent} % santé (1 faim)`),
-      consumableCard(best.ammo, r.hits, best.ammo ? P[best.ammo] : 0, best.ammo ? `+${C[best.ammo].percentAttack} % attaque par coup (obligatoire avec une arme à feu)` : "inutile sans arme à feu"),
+      consumableCard(best.ammo, r.hits, best.ammo ? P[best.ammo] : 0, best.ammo ? `+${C[best.ammo].percentAttack} % attaque par coup` : "inutile sans arme à feu"),
       best.usePill ? consumableCard(PILL, r.pill / P[PILL], P[PILL], `+${C[PILL].percentAttack} % pendant ${C[PILL].buffDurationHours} h, puis malus ${C[PILL].debuffDurationHours} h`)
         : el("div", { class: "card none" }, el("span", { class: "slot", text: "Pilule" }), el("strong", { text: "Aucune" }))));
 
