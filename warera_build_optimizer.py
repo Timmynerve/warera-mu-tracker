@@ -13,6 +13,10 @@ reverse-engineered from the game client and checked against ~1,400 live hits:
   - each lootChance % gives 1% (case1) and 0.01% (case2) per hit to loot a case (wooden map cases are ignored)
 Fighting also pays bounties and battle loot pool items (handed out by damage rank), both counted per 1k
 damage. Battle bonuses (orders, alliance, patriotic...) only scale those earnings and the damage shown.
+Income since the October 2026 stats rework:
+  - self work in your own companies costs energyCostPerAction energy and adds your Production to their storage
+  - a manager position pays rateManagement per Management point every hour, with no energy spent
+  - stamina (travel) cannot take skill points; leadership only tilts employee training cards, so it is left out
 
 Usage: python warera_build_optimizer.py [--user Timmynerve] [--companies 4,6,8] [--max-daily-cost 0]
 """
@@ -29,9 +33,9 @@ FOODS = ("bread", "steak", "cookedFish")
 AMMOS = (None, "lightAmmo", "ammo", "heavyAmmo")
 PILL = "cocain"
 FIREARMS = ("gun", "rifle", "sniper", "tank", "jet")  # knives take no ammo, every other weapon needs some
-# Skills the optimizer may move points between ("companies" is fixed by --companies, management is left out)
+# Skills the optimizer may move points between ("companies" is fixed by --companies, leadership is left out)
 FREE_SKILLS = ("attack", "precision", "criticalChance", "criticalDamages", "armor", "dodge",
-               "health", "hunger", "lootChance", "energy", "production", "entrepreneurship")
+               "health", "hunger", "lootChance", "energy", "production", "management")
 SOFT_CAP_DIVISOR = 40
 MISS_DAMAGE = 0.5
 DURABILITY = 100
@@ -72,6 +76,15 @@ def load_equipment(csv_path, items, prices):
     return options
 
 
+def manager_rate(cfg):
+    """Average hourly manager pay per Management point, before tax.
+
+    Offers are bounded by an allowed range of maxHourlyWage, the pay at the highest Management value."""
+    levels = cfg["skills"]["management"]["levels"]
+    top_value = levels[str(max(int(level) for level in levels))]["value"]
+    return api("managerOffer.getWageStats", {})["allowedRange"]["average"] / top_value
+
+
 def is_firearm(option):
     """Every weapon except the knife (and bare hands) needs ammo to shoot."""
     return option[0].split()[0] in FIREARMS
@@ -86,7 +99,7 @@ def dominates(a, b):
 
 
 class Model:
-    def __init__(self, cfg, user, prices, wage, args):
+    def __init__(self, cfg, user, prices, manager_rate, args):
         self.skills_cfg = cfg["skills"]
         self.items = cfg["items"]
         self.prices = prices
@@ -99,7 +112,7 @@ class Model:
         self.bounty_per_1k = args.bounty_per_1k
         self.pool_loot_per_1k = args.pool_loot_per_1k
         self.battle_multiplier = args.battle_multiplier
-        self.wage = wage
+        self.manager_rate = manager_rate  # hourly pay per Management point, after tax
         self.pp_value = args.pp_value
         self.company_income = args.company_income
         pill = self.items[PILL]["flatStats"]
@@ -117,13 +130,12 @@ class Model:
         return max(int(level) for level in self.skills_cfg[skill]["levels"])
 
     def income(self, levels, companies):
-        """Daily income that does not depend on fighting: automated companies, own-company work, job."""
+        """Daily income that does not depend on fighting: automated companies, own-company work, manager position."""
         production = self.value("production", levels["production"])
-        own_work = self.regen_per_day * self.value("entrepreneurship", levels["entrepreneurship"]) / self.energy_per_action
-        job_work = self.regen_per_day * self.value("energy", levels["energy"]) / self.energy_per_action
+        own_work = self.regen_per_day * self.value("energy", levels["energy"]) / self.energy_per_action
         return {"companies": companies * self.company_income,
                 "own company work": own_work * production * self.pp_value,
-                "job": job_work * production * self.wage}
+                "manager position": 24 * self.value("management", levels["management"]) * self.manager_rate}
 
     def evaluate(self, levels, gear, food, ammo, pill, income, budget):
         """Damage per day and spending breakdown for one full setup, fighting as much as the budget allows."""
@@ -309,7 +321,9 @@ def main():
     parser.add_argument("--case-price", type=float, help="value of one case1 (default: current market price)")
     parser.add_argument("--battle-multiplier", type=float, default=1.4,
                         help="average battle bonus multiplier (orders, alliance...), used for bounty and loot pool")
-    parser.add_argument("--wage-tax", type=float, default=10, help="income tax on job wages, in percent")
+    parser.add_argument("--manager-rate", type=float,
+                        help="hourly manager pay per Management point (default: average allowed offer)")
+    parser.add_argument("--wage-tax", type=float, default=10, help="manager tax on the manager pay, in percent")
     parser.add_argument("--equipment-csv", default="equipment_market_summary.csv")
     args = parser.parse_args()
 
@@ -320,9 +334,9 @@ def main():
         sys.exit(f"No player found for '{args.user}'")
     user = api("user.getUserLite", {"userId": found["userIds"][0]})
     prices = api("itemTrading.getPrices", {})
-    wage = api("workOffer.getWageStats", {})["allowedRange"]["average"] * (1 - args.wage_tax / 100)
+    rate = args.manager_rate or manager_rate(cfg)
     equipment = load_equipment(args.equipment_csv, cfg["items"], prices)
-    model = Model(cfg, user, prices, wage, args)
+    model = Model(cfg, user, prices, rate * (1 - args.wage_tax / 100), args)
 
     total_points = user["leveling"]["totalSkillPoints"]
     current = {skill: user["skills"][skill]["level"] for skill in FREE_SKILLS}

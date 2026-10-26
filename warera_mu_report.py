@@ -146,7 +146,7 @@ def optimizer_data(config):
     without one the tab explains that it is unavailable."""
     import os
     sys.path.insert(0, str(Path(__file__).parent))  # isolated mode (python -I, as in CI) leaves the script dir out
-    from warera_build_optimizer import CRAFT, FREE_SKILLS
+    from warera_build_optimizer import CRAFT, FREE_SKILLS, manager_rate
     from warera_equipment_market import fetch_sales, summarize
 
     items = config["items"]
@@ -176,7 +176,7 @@ def optimizer_data(config):
                         for code in ("bread", "steak", "cookedFish", "lightAmmo", "ammo", "heavyAmmo", "cocain")},
         "prices": {k: prices.get(k) for k in ("bread", "steak", "cookedFish", "lightAmmo", "ammo", "heavyAmmo",
                                              "cocain", "case1", "case2", "scraps", "steel")},
-        "wage": api("workOffer.getWageStats", {})["allowedRange"]["average"],
+        "managerRate": manager_rate(config),
         "craft": CRAFT,
         "rules": {"healthCost": config["battle"]["healthCost"], "regenHours": config["user"]["regenDividedBy"],
                   "energyPerAction": config["user"]["energyCostPerAction"],

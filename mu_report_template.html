@@ -604,7 +604,7 @@ const RARITY = { common: ["Commun", "#8a8f98"], uncommon: ["Peu commun", "#3f9b4
   epic: ["Épique", "#9b55d6"], legendary: ["Légendaire", "#e08a1e"], mythic: ["Mythique", "#d04545"] };
 const SKILL_LABELS = { attack: "Attaque", precision: "Précision", criticalChance: "Chance crit.", criticalDamages: "Dégâts crit.",
   armor: "Armure", dodge: "Esquive", health: "Santé", hunger: "Faim", lootChance: "Butin", energy: "Énergie",
-  production: "Production", entrepreneurship: "Entrepreneuriat", companies: "Entreprises" };
+  production: "Production", management: "Management", companies: "Entreprises" };
 const STAT_LABELS = { attack: "att.", criticalChance: "crit", criticalDamages: "dég. crit", precision: "préc.", armor: "armure", dodge: "esquive" };
 const ROLLS = { low: 0.1, mid: 0.5, high: 0.9 };
 const ROLL_LABELS = { low: "tirage faible", mid: "tirage moyen", high: "tirage fort" };
@@ -648,7 +648,7 @@ function makeModel(member, playerLevel, bounty, budget) {
   const D = OPT.defaults, R = OPT.rules, P = OPT.prices, C = OPT.consumables;
   const rank = member.skills.attack?.militaryRankPercent || 0;
   const regenDay = 24 / R.regenHours;
-  const wage = OPT.wage * (1 - D.wageTax / 100);
+  const managerRate = OPT.managerRate * (1 - D.wageTax / 100);  // hourly pay per Management point
   const pill = C[PILL];
   const cycle = pill.buffDurationHours + pill.debuffDurationHours;
   const earnPerDamage = { bounty: optMultiplier() * bounty / 1000, pool: optMultiplier() * D.poolLoot / 1000 };
@@ -658,8 +658,8 @@ function makeModel(member, playerLevel, bounty, budget) {
     const production = skillValue("production", lv.production);
     return {
       companies: companies * D.companyIncome,
-      ownWork: regenDay * skillValue("entrepreneurship", lv.entrepreneurship) / R.energyPerAction * production * D.ppValue,
-      job: regenDay * skillValue("energy", lv.energy) / R.energyPerAction * production * wage,
+      ownWork: regenDay * skillValue("energy", lv.energy) / R.energyPerAction * production * D.ppValue,
+      job: 24 * skillValue("management", lv.management) * managerRate,
     };
   };
 
@@ -974,7 +974,7 @@ function renderOptimizer(member, best, now, current, totalPoints) {
   const flows = [
     flowRow("Entreprises automatisées", inc.companies, null, `${companies} × ${D.companyIncome}`),
     flowRow("Travail dans tes entreprises", inc.ownWork),
-    flowRow("Emploi", inc.job),
+    flowRow("Poste de manager", inc.job),
     flowRow("Primes", -t.bounty, null, `${optUi.bounty.value} / 1k dégâts`),
     flowRow("Pool de butin de bataille", -t.pool, null, `${D.poolLoot} / 1k dégâts`),
     flowRow("Revente des caisses", -t.cases, "case1", `${fmt(r.hits * skillValue("lootChance", best.levels.lootChance) / 100)} caisses`),
@@ -1003,7 +1003,7 @@ function renderOptimizer(member, best, now, current, totalPoints) {
     el("div", { class: "opt-grid" }, skills, stats),
     gear, consumables,
     el("div", { class: "opt-grid" }, daily, invest),
-    el("p", { class: "note", text: "Modèle tiré du code du jeu et vérifié sur des coups réels : un coup raté fait moitié moins de dégâts, l'armure et l'esquive passent par x → 100x/(x+40), l'arme s'use à chaque coup et l'armure seulement quand le coup n'est pas esquivé. Les prix d'équipement sont les ventes médianes des 3 derniers jours ; un objet fabriqué ou acheté se démonte en fin de vie pour récupérer des scraps. Avec la pilule, on se bat pendant les 8 h de buff en partant de barres pleines. Revenus d'entreprise (24/jour), pool de butin (0,13 / 1k dégâts, calé sur l'historique de Timmynerve) et bonus de bataille moyen (réglable en haut, +40 % par défaut) sont des estimations. Le bonus de bataille augmente les dégâts réels, donc les primes et le butin du pool." }));
+    el("p", { class: "note", text: "Modèle tiré du code du jeu et vérifié sur des coups réels : un coup raté fait moitié moins de dégâts, l'armure et l'esquive passent par x → 100x/(x+40), l'arme s'use à chaque coup et l'armure seulement quand le coup n'est pas esquivé. Les prix d'équipement sont les ventes médianes des 3 derniers jours ; un objet fabriqué ou acheté se démonte en fin de vie pour récupérer des scraps. Avec la pilule, on se bat pendant les 8 h de buff en partant de barres pleines. Depuis la v0.27, toute l'énergie part en auto-travail (10 énergie ajoutent ta Production au stock de ton entreprise) et un poste de manager paie chaque heure un tarif moyen par point de Management. Revenus d'entreprise (24/jour), pool de butin (0,13 / 1k dégâts, calé sur l'historique de Timmynerve) et bonus de bataille moyen (réglable en haut, +40 % par défaut) sont des estimations. Le bonus de bataille augmente les dégâts réels, donc les primes et le butin du pool." }));
 }
 
 function init() {
