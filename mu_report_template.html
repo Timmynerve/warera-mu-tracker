@@ -276,6 +276,7 @@ tfoot td { font-weight: 600; border-top: 2px solid var(--ink); border-bottom: 0;
         <label for="opt-player">Joueur <select id="opt-player"></select></label>
         <label for="opt-level">Niveau <select id="opt-level"></select></label>
         <label for="opt-companies">Entreprises actives <select id="opt-companies"></select></label>
+        <label for="opt-keep"><input type="checkbox" id="opt-keep"> Garder mes compétences actuelles</label>
         <label for="opt-bounty">Prime <span class="bonus-num"><input type="number" id="opt-bounty" min="0" step="0.01" value="0.04" inputmode="decimal"> / 1k dégâts</span></label>
         <label for="opt-pool">Pool de butin <span class="bonus-num"><input type="number" id="opt-pool" min="0" step="0.01" value="0.13" inputmode="decimal"> / 1k dégâts</span></label>
         <label for="opt-budget">Perte journalière acceptée <span class="bonus-num"><input type="number" id="opt-budget" min="0" step="10" value="0" inputmode="decimal"></span></label>
@@ -808,7 +809,7 @@ const optMultiplier = () => 1 + OPT_BONUS / 100;
 function companiesFor(member) { return skillValue("companies", member.skillLevels?.companies || 0); }
 
 function initOptimizer() {
-  for (const id of ["player", "level", "companies", "bounty", "pool", "budget", "status", "out", "bonus", "bonus-n"]) optUi[id] = document.getElementById("opt-" + id);
+  for (const id of ["player", "level", "companies", "keep", "bounty", "pool", "budget", "status", "out", "bonus", "bonus-n"]) optUi[id] = document.getElementById("opt-" + id);
   if (!OPT || !Object.values(OPT.equipment).some(e => e.market)) {
     optUi.out.replaceChildren(el("p", { class: "empty", text: "Prix des équipements indisponibles : le rapport doit être généré avec un jeton API (variable WARERA_API_TOKEN)." }));
     return;
@@ -835,6 +836,11 @@ function initOptimizer() {
   const schedule = () => { clearTimeout(timer); timer = setTimeout(runOptimizer, 250); };
   optUi.player.addEventListener("input", () => { store.set("optPlayer", optUi.player.value); syncPlayer(); schedule(); });
   [optUi.level, optUi.companies].forEach(c => c.addEventListener("input", schedule));
+  // keeping the current skills also keeps the current company count, so that choice no longer applies
+  const syncKeep = () => { optUi.companies.disabled = optUi.keep.checked; };
+  optUi.keep.checked = store.get("optKeep") === "1";
+  syncKeep();
+  optUi.keep.addEventListener("input", () => { store.set("optKeep", optUi.keep.checked ? "1" : "0"); syncKeep(); schedule(); });
   [optUi.bounty, optUi.pool, optUi.budget].forEach(c => c.addEventListener("input", () => {
     store.set("optBounty", optUi.bounty.value); store.set("optPool", optUi.pool.value); schedule();
   }));
@@ -867,12 +873,21 @@ async function runOptimizer() {
   const perLevel = member.skillPoints && member.level ? member.skillPoints / member.level : 4;
   const totalPoints = Math.round(perLevel * level);
   const current = Object.fromEntries(OPT.freeSkills.map(s => [s, member.skillLevels[s] || 0]));
-  const choice = optUi.companies.value;
+  const keep = optUi.keep.checked;
+  const choice = keep ? "keep" : optUi.companies.value;
   const companyLevels = OPT.skills.companies.levels;
   const candidates = (choice === "auto" ? companyLevels.map((_, i) => i) : [companyLevels.findIndex(([v]) => String(v) === choice)])
     .filter(i => i >= 0 && i <= model.maxLevel("companies") && skillCost("companies", i) < totalPoints);
   let best = null;
-  for (const [i, lvl] of candidates.entries()) {
+  if (keep) {
+    // skills stay as they are: only gear, food, ammo and pill are optimized
+    const lvl = member.skillLevels.companies || 0;
+    const points = totalPoints - skillCost("companies", lvl);
+    const levels = model.fit(current, points);
+    const setup = model.bestSetup(levels, companyLevels[lvl][0], GEAR);
+    if (setup) best = { ...setup, levels, companiesLevel: lvl, points };
+  }
+  for (const [i, lvl] of keep ? [] : candidates.entries()) {
     optUi.status.textContent = candidates.length > 1 ? `Calcul en cours… (${i + 1}/${candidates.length})` : "Calcul en cours…";
     const points = totalPoints - skillCost("companies", lvl);
     const r = await model.optimize(points, companyLevels[lvl][0], GEAR, current, isStale);
@@ -884,7 +899,8 @@ async function runOptimizer() {
   const curCompaniesLevel = member.skillLevels.companies || 0;
   const now = level === member.level ? model.bestSetup(model.fit(current, totalPoints - skillCost("companies", curCompaniesLevel)),
     companyLevels[curCompaniesLevel][0], GEAR) : null;
-  optUi.status.textContent = choice === "auto" ? `Meilleur choix : ${companyLevels[best.companiesLevel][0]} entreprises actives` : "";
+  optUi.status.textContent = keep ? "Compétences actuelles conservées : seuls l'équipement et les consommables sont optimisés"
+    : choice === "auto" ? `Meilleur choix : ${companyLevels[best.companiesLevel][0]} entreprises actives` : "";
   renderOptimizer(member, best, now, current, totalPoints);
 }
 
