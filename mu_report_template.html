@@ -277,6 +277,7 @@ tfoot td { font-weight: 600; border-top: 2px solid var(--ink); border-bottom: 0;
         <label for="opt-level">Niveau <select id="opt-level"></select></label>
         <label for="opt-companies">Entreprises actives <select id="opt-companies"></select></label>
         <label for="opt-bounty">Prime <span class="bonus-num"><input type="number" id="opt-bounty" min="0" step="0.01" value="0.04" inputmode="decimal"> / 1k dégâts</span></label>
+        <label for="opt-pool">Pool de butin <span class="bonus-num"><input type="number" id="opt-pool" min="0" step="0.01" value="0.13" inputmode="decimal"> / 1k dégâts</span></label>
         <label for="opt-budget">Perte journalière acceptée <span class="bonus-num"><input type="number" id="opt-budget" min="0" step="10" value="0" inputmode="decimal"></span></label>
         <span class="muted" id="opt-status" role="status"></span>
       </div>
@@ -644,14 +645,14 @@ function gearOptions() {
   return out;
 }
 
-function makeModel(member, playerLevel, bounty, budget) {
+function makeModel(member, playerLevel, bounty, poolLoot, budget) {
   const D = OPT.defaults, R = OPT.rules, P = OPT.prices, C = OPT.consumables;
   const rank = member.skills.attack?.militaryRankPercent || 0;
   const regenDay = 24 / R.regenHours;
   const managerRate = OPT.managerRate * (1 - D.wageTax / 100);  // hourly pay per Management point
   const pill = C[PILL];
   const cycle = pill.buffDurationHours + pill.debuffDurationHours;
-  const earnPerDamage = { bounty: optMultiplier() * bounty / 1000, pool: optMultiplier() * D.poolLoot / 1000 };
+  const earnPerDamage = { bounty: optMultiplier() * bounty / 1000, pool: optMultiplier() * poolLoot / 1000 };
   const maxLevel = s => playerLevel < OPT.skills[s].unlockAt ? 0 : OPT.skills[s].levels.length - 1;
 
   const income = (lv, companies) => {
@@ -807,7 +808,7 @@ const optMultiplier = () => 1 + OPT_BONUS / 100;
 function companiesFor(member) { return skillValue("companies", member.skillLevels?.companies || 0); }
 
 function initOptimizer() {
-  for (const id of ["player", "level", "companies", "bounty", "budget", "status", "out", "bonus", "bonus-n"]) optUi[id] = document.getElementById("opt-" + id);
+  for (const id of ["player", "level", "companies", "bounty", "pool", "budget", "status", "out", "bonus", "bonus-n"]) optUi[id] = document.getElementById("opt-" + id);
   if (!OPT || !Object.values(OPT.equipment).some(e => e.market)) {
     optUi.out.replaceChildren(el("p", { class: "empty", text: "Prix des équipements indisponibles : le rapport doit être généré avec un jeton API (variable WARERA_API_TOKEN)." }));
     return;
@@ -821,6 +822,7 @@ function initOptimizer() {
   optUi.companies.append(el("option", { value: "auto", text: "Auto (meilleur choix)" }),
     ...companyLevels.map(([v]) => el("option", { value: String(v), text: String(v) })));
   optUi.bounty.value = store.get("optBounty") || OPT.defaults.bounty;
+  optUi.pool.value = store.get("optPool") || OPT.defaults.poolLoot;
   const syncPlayer = () => {
     const m = DATA.members.find(x => x.id === optUi.player.value);
     optUi.level.replaceChildren(...Array.from({ length: Math.max(60, m.level + 20) }, (_, i) =>
@@ -833,7 +835,9 @@ function initOptimizer() {
   const schedule = () => { clearTimeout(timer); timer = setTimeout(runOptimizer, 250); };
   optUi.player.addEventListener("input", () => { store.set("optPlayer", optUi.player.value); syncPlayer(); schedule(); });
   [optUi.level, optUi.companies].forEach(c => c.addEventListener("input", schedule));
-  [optUi.bounty, optUi.budget].forEach(c => c.addEventListener("input", () => { store.set("optBounty", optUi.bounty.value); schedule(); }));
+  [optUi.bounty, optUi.pool, optUi.budget].forEach(c => c.addEventListener("input", () => {
+    store.set("optBounty", optUi.bounty.value); store.set("optPool", optUi.pool.value); schedule();
+  }));
   const saved = parseFloat(store.get("optBonus"));
   OPT_BONUS = isFinite(saved) && saved >= 0 ? saved : Math.round((OPT.defaults.battleMultiplier - 1) * 100);
   optUi.bonus.value = Math.min(OPT_BONUS, Number(optUi.bonus.max));
@@ -859,7 +863,7 @@ async function runOptimizer() {
   const member = DATA.members.find(m => m.id === optUi.player.value);
   const level = Number(optUi.level.value);
   const num = v => Math.max(0, parseFloat(String(v).replace(",", ".")) || 0);
-  const model = makeModel(member, level, num(optUi.bounty.value), num(optUi.budget.value));
+  const model = makeModel(member, level, num(optUi.bounty.value), num(optUi.pool.value), num(optUi.budget.value));
   const perLevel = member.skillPoints && member.level ? member.skillPoints / member.level : 4;
   const totalPoints = Math.round(perLevel * level);
   const current = Object.fromEntries(OPT.freeSkills.map(s => [s, member.skillLevels[s] || 0]));
@@ -975,8 +979,9 @@ function renderOptimizer(member, best, now, current, totalPoints) {
     flowRow("Entreprises automatisées", inc.companies, null, `${companies} × ${D.companyIncome}`),
     flowRow("Travail dans tes entreprises", inc.ownWork),
     flowRow("Poste de manager", inc.job),
-    flowRow("Primes", -t.bounty, null, `${optUi.bounty.value} / 1k dégâts`),
-    flowRow("Pool de butin de bataille", -t.pool, null, `${D.poolLoot} / 1k dégâts`),
+    // earnings use real damage (battle bonus included), so show that damage to make the line checkable
+    flowRow("Primes", -t.bounty, null, `${optUi.bounty.value} / 1k × ${short(dmgReal)} dégâts réels`),
+    flowRow("Pool de butin de bataille", -t.pool, null, `${optUi.pool.value} / 1k × ${short(dmgReal)} dégâts réels`),
     flowRow("Revente des caisses", -t.cases, "case1", `${fmt(r.hits * skillValue("lootChance", best.levels.lootChance) / 100)} caisses`),
     flowRow("Revente des scraps (démontage)", -t.salvage, "scraps"),
     flowRow("Achat / fabrication d'équipement", -t.gear, null, `${r.weaponWear.toFixed(1)} arme + ${(5 * r.armorWear).toFixed(1)} pièces d'armure`),
@@ -1003,7 +1008,7 @@ function renderOptimizer(member, best, now, current, totalPoints) {
     el("div", { class: "opt-grid" }, skills, stats),
     gear, consumables,
     el("div", { class: "opt-grid" }, daily, invest),
-    el("p", { class: "note", text: "Modèle tiré du code du jeu et vérifié sur des coups réels : un coup raté fait moitié moins de dégâts, l'armure et l'esquive passent par x → 100x/(x+40), l'arme s'use à chaque coup et l'armure seulement quand le coup n'est pas esquivé. Les prix d'équipement sont les ventes médianes des 3 derniers jours ; un objet fabriqué ou acheté se démonte en fin de vie pour récupérer des scraps. Avec la pilule, on se bat pendant les 8 h de buff en partant de barres pleines. Depuis la v0.27, toute l'énergie part en auto-travail (10 énergie ajoutent ta Production au stock de ton entreprise) et un poste de manager paie chaque heure un tarif moyen par point de Management. Revenus d'entreprise (24/jour), pool de butin (0,13 / 1k dégâts, calé sur l'historique de Timmynerve) et bonus de bataille moyen (réglable en haut, +40 % par défaut) sont des estimations. Le bonus de bataille augmente les dégâts réels, donc les primes et le butin du pool." }));
+    el("p", { class: "note", text: "Modèle tiré du code du jeu et vérifié sur des coups réels : un coup raté fait moitié moins de dégâts, l'armure et l'esquive passent par x → 100x/(x+40), l'arme s'use à chaque coup et l'armure seulement quand le coup n'est pas esquivé. Les prix d'équipement sont les ventes médianes des 3 derniers jours ; un objet fabriqué ou acheté se démonte en fin de vie pour récupérer des scraps. Avec la pilule, on se bat pendant les 8 h de buff en partant de barres pleines. Depuis la v0.27, toute l'énergie part en auto-travail (10 énergie ajoutent ta Production au stock de ton entreprise) et un poste de manager paie chaque heure un tarif moyen par point de Management. Revenus d'entreprise (24/jour), pool de butin (réglable en haut, 0,13 / 1k dégâts par défaut, calé sur l'historique de Timmynerve) et bonus de bataille moyen (réglable en haut, +40 % par défaut) sont des estimations. Le bonus de bataille augmente les dégâts réels, donc les primes et le butin du pool." }));
 }
 
 function init() {
